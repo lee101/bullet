@@ -7,6 +7,7 @@ import { UpgradeScreen } from './components/UpgradeScreen';
 import { ShopUI } from './components/ShopUI';
 import { GameEngine } from './engine/GameEngine';
 import { InputManager } from './engine/InputManager';
+import { audioManager } from './engine/AudioManager';
 import { GameState } from './types';
 
 const App: React.FC = () => {
@@ -18,9 +19,27 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setDrawState(engine.getDrawState());
+      const state = engine.getDrawState();
+      setDrawState(state);
       setGameState(engine.state);
-    }, 16); 
+
+      // Handle music based on game state
+      const hasBoss = state.enemies.some(e => e.type === 'BOSS_DRAKE');
+
+      if (engine.state === GameState.MENU) {
+        audioManager.play('menu');
+      } else if (engine.state === GameState.SHOP) {
+        audioManager.play('town');
+      } else if (engine.state === GameState.PLAYING) {
+        if (hasBoss) {
+          audioManager.play('boss');
+        } else {
+          audioManager.play('battle');
+        }
+      } else if (engine.state === GameState.GAME_OVER) {
+        audioManager.play('menu');
+      }
+    }, 16);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

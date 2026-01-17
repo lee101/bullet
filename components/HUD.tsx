@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { PlayerStats, WanderingTrader, TownState, Vec2 } from '../types';
 import { SKILL_COOLDOWNS, MAX_SLOTS } from '../constants';
+import { audioManager } from '../engine/AudioManager';
 
 interface HUDProps {
   players: PlayerStats[];
@@ -79,6 +80,8 @@ const CompactPanel: React.FC<{ p: PlayerStats, index: number }> = ({ p, index })
 
 export const HUD: React.FC<HUDProps> = ({ players, score, money, town, traders, playerPositions }) => {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [volume, setVolume] = useState(audioManager.getVolume());
+  const [muted, setMuted] = useState(false);
 
   useEffect(() => {
     if (!playerPositions) return;
@@ -92,6 +95,22 @@ export const HUD: React.FC<HUDProps> = ({ players, score, money, town, traders, 
     setShowTooltip(nearby);
   }, [playerPositions, town, traders]);
 
+  const handleVolumeChange = (newVol: number) => {
+    setVolume(newVol);
+    audioManager.setVolume(newVol);
+    if (newVol > 0) setMuted(false);
+  };
+
+  const toggleMute = () => {
+    if (muted) {
+      audioManager.setVolume(volume || 0.5);
+      setMuted(false);
+    } else {
+      audioManager.setVolume(0);
+      setMuted(true);
+    }
+  };
+
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-rajdhani">
       {players.map((p, i) => <CompactPanel key={p.id} p={p} index={i} />)}
@@ -101,6 +120,24 @@ export const HUD: React.FC<HUDProps> = ({ players, score, money, town, traders, 
             <span className="text-xl font-orbitron font-bold text-white tracking-tighter leading-none">{score.toLocaleString()}</span>
             <span className="text-[10px] tracking-[0.3em] text-yellow-400 uppercase font-bold">{money.toLocaleString()} GOLD</span>
         </div>
+      </div>
+
+      <div className="fixed bottom-4 right-4 pointer-events-auto flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5">
+        <button
+          onClick={toggleMute}
+          className="text-white/70 hover:text-white transition-colors text-sm"
+        >
+          {muted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}
+        </button>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.1"
+          value={muted ? 0 : volume}
+          onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+          className="w-16 h-1 bg-white/20 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
+        />
       </div>
 
       {showTooltip && (
