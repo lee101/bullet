@@ -82,6 +82,29 @@ export const HUD: React.FC<HUDProps> = ({ players, score, money, town, traders, 
   const [showTooltip, setShowTooltip] = useState(false);
   const [volume, setVolume] = useState(audioManager.getVolume());
   const [muted, setMuted] = useState(false);
+  const [hasController, setHasController] = useState(false);
+
+  useEffect(() => {
+    const checkController = () => {
+      const gamepads = navigator.getGamepads();
+      for (const gp of gamepads) {
+        if (gp && gp.connected) {
+          setHasController(true);
+          return;
+        }
+      }
+      setHasController(false);
+    };
+    checkController();
+    const interval = setInterval(checkController, 500);
+    window.addEventListener('gamepadconnected', () => setHasController(true));
+    window.addEventListener('gamepaddisconnected', checkController);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('gamepadconnected', () => setHasController(true));
+      window.removeEventListener('gamepaddisconnected', checkController);
+    };
+  }, []);
 
   useEffect(() => {
     if (!playerPositions) return;
@@ -142,7 +165,7 @@ export const HUD: React.FC<HUDProps> = ({ players, score, money, town, traders, 
 
       {showTooltip && (
           <div className="fixed bottom-12 left-1/2 -translate-x-1/2 bg-yellow-500/90 text-black px-6 py-2 rounded-full font-bold uppercase tracking-widest text-[12px] animate-bounce shadow-2xl border border-white/20">
-              PRESS [ACTION / X] TO TRADE
+              PRESS {hasController ? 'Ⓧ' : '[X]'} TO TRADE
           </div>
       )}
     </div>

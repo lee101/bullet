@@ -80,6 +80,10 @@ const App: React.FC = () => {
     engine.exitShop();
   };
 
+  const handleEquipSpell = (pIdx: number, spellId: string, slotIdx: number) => {
+    engine.equipSpell(pIdx, spellId, slotIdx);
+  };
+
   return (
     <div className="relative w-screen h-screen bg-[#050505] flex items-center justify-center overflow-hidden font-rajdhani text-white">
       <div className="w-full h-full max-w-[1920px] max-h-[1080px] flex items-center justify-center p-4">
@@ -92,12 +96,13 @@ const App: React.FC = () => {
           )}
 
           {gameState === GameState.SHOP && (
-            <ShopUI 
-                players={drawState.players} 
-                money={drawState.money} 
+            <ShopUI
+                players={drawState.players}
+                money={drawState.money}
                 town={drawState.town}
-                onBuy={handleBuy} 
-                onExit={handleExitShop} 
+                onBuy={handleBuy}
+                onEquipSpell={handleEquipSpell}
+                onExit={handleExitShop}
             />
           )}
 

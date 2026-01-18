@@ -103,6 +103,7 @@ export interface PlayerStats {
   weaponSlots: string[];
   armorSlots: string[];
   magicSlots: string[];
+  equippedSpells: (string | null)[]; // 4 spell slots for X, Y, B, A
   projectileCount: number;
   // Stats detail for UI
   statsDetail: {
@@ -144,14 +145,18 @@ export interface Enemy {
   speed: number;
   radius: number;
   damage: number;
-  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'STALKER' | 'DEER' | 'SERPENT';
-  movement: 'CHASE' | 'SNIPE' | 'ORBIT' | 'WANDER' | 'BOSS_PATTERN' | 'STILL';
+  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF';
+  movement: 'CHASE' | 'SNIPE' | 'ORBIT' | 'WANDER' | 'BOSS_PATTERN' | 'STILL' | 'PATROL';
   cooldown: number;
   knockbackVel: Vec2;
   slowTimer: number;
   burnTimer: number;
   poisonTimer: number;
   isAggressive: boolean;
+  angle: number;
+  visionCone: number;
+  visionRange: number;
+  patrolTarget?: Vec2;
 }
 
 export interface Pickup {
@@ -186,7 +191,7 @@ export interface ShopItem {
   description: string;
   icon: string;
   price: number;
-  category: 'WEAPON' | 'ARMOR' | 'MAGIC' | 'UTILITY';
+  category: 'WEAPON' | 'ARMOR' | 'MAGIC' | 'UTILITY' | 'SPELL';
   tier: number;
   mods: {
     dmg?: number;
@@ -195,6 +200,25 @@ export interface ShopItem {
     mag?: number;
     proj?: number;
   };
+  spellData?: SpellData;
+}
+
+export type SpellType =
+  | 'FIREBALL' | 'ICE_STORM' | 'LIGHTNING_BOLT' | 'HEAL'
+  | 'DASH' | 'NOVA' | 'SUMMON' | 'SHIELD' | 'METEOR'
+  | 'POISON_CLOUD' | 'TELEPORT' | 'LASER' | 'EARTHQUAKE'
+  | 'CHAIN_LIGHTNING' | 'BLOOD_DRAIN' | 'TIME_SLOW';
+
+export interface SpellData {
+  type: SpellType;
+  element: ElementType;
+  damage: number;
+  manaCost: number;
+  cooldown: number;
+  range: number;
+  radius?: number;
+  duration?: number;
+  projectileCount?: number;
 }
 
 export type Biome = 'SEA' | 'LOWLAND' | 'GRASS' | 'SWAMP' | 'MOUNTAIN' | 'TOWN';

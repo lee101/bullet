@@ -16,13 +16,13 @@ import {
   FireArea,
   WanderingTrader
 } from '../types';
-import { 
-  CANVAS_WIDTH, 
+import {
+  CANVAS_WIDTH,
   CANVAS_HEIGHT,
   WORLD_WIDTH,
   WORLD_HEIGHT,
-  PLAYER_RADIUS, 
-  INITIAL_PLAYER_STATS, 
+  PLAYER_RADIUS,
+  INITIAL_PLAYER_STATS,
   ENEMY_TYPES,
   ELEMENT_COLORS,
   SKILL_COOLDOWNS,
@@ -33,7 +33,8 @@ import {
   GRAVITY,
   MOUNT_CONFIGS,
   MAX_SLOTS,
-  SHOP_ITEMS
+  SHOP_ITEMS,
+  SPELL_DATA
 } from '../constants';
 import { InputManager } from './InputManager';
 import { WorldGenerator } from './WorldGenerator';
@@ -111,6 +112,7 @@ export class GameEngine {
     this.camera.y = spawn.y - CANVAS_HEIGHT / 2;
     this.spawnAmbientMounts();
     this.spawnTraders();
+    this.spawnIdleEnemies();
     this.startWave(1);
     this.state = GameState.PLAYING;
   }
@@ -144,6 +146,36 @@ export class GameEngine {
     }
   }
 
+  private spawnIdleEnemies() {
+    const idleTypes: (keyof typeof ENEMY_TYPES)[] = ['SENTRY', 'PATROL', 'GUARD', 'WOLF'];
+    for (let i = 0; i < 30; i++) {
+      const pos = this.world.getSpawnablePosition();
+      const t = idleTypes[Math.floor(Math.random() * idleTypes.length)];
+      const config = ENEMY_TYPES[t];
+      this.enemies.push({
+        id: this.nextId++,
+        pos: { ...pos },
+        hp: config.hp,
+        maxHp: config.hp,
+        speed: config.speed,
+        radius: config.radius,
+        damage: config.damage,
+        type: t,
+        movement: config.movement as any,
+        cooldown: 0,
+        knockbackVel: { x: 0, y: 0 },
+        slowTimer: 0,
+        burnTimer: 0,
+        poisonTimer: 0,
+        isAggressive: false,
+        angle: Math.random() * Math.PI * 2,
+        visionCone: config.visionCone,
+        visionRange: config.visionRange,
+        patrolTarget: config.movement === 'PATROL' ? this.world.getSpawnablePosition() : undefined
+      });
+    }
+  }
+
   private startWave(waveNum: number) {
     this.wave = waveNum;
     this.enemiesToSpawn = 12 + waveNum * 8;
@@ -156,12 +188,13 @@ export class GameEngine {
   private spawnBoss() {
     const spawnPos = { x: WORLD_WIDTH/2 + 800, y: WORLD_HEIGHT/2 };
     const config = ENEMY_TYPES.BOSS_DRAKE;
-    this.enemies.push({ 
-        id: this.nextId++, pos: spawnPos, 
-        hp: config.hp + (this.wave * 1000), maxHp: config.hp + (this.wave * 1000), 
-        speed: config.speed, radius: config.radius, damage: config.damage, 
+    this.enemies.push({
+        id: this.nextId++, pos: spawnPos,
+        hp: config.hp + (this.wave * 1000), maxHp: config.hp + (this.wave * 1000),
+        speed: config.speed, radius: config.radius, damage: config.damage,
         type: 'BOSS_DRAKE', movement: 'BOSS_PATTERN', cooldown: 0, knockbackVel: { x: 0, y: 0 },
-        slowTimer: 0, burnTimer: 0, poisonTimer: 0, isAggressive: true
+        slowTimer: 0, burnTimer: 0, poisonTimer: 0, isAggressive: true,
+        angle: 0, visionCone: 0, visionRange: 0
     });
     this.enemiesSpawned++;
   }
@@ -358,8 +391,18 @@ export class GameEngine {
 
   private activateSkill(pIdx: number, sIdx: number) {
     const p = this.players[pIdx], pos = this.playerPositions[pIdx];
-    p.skillCooldowns[sIdx] = SKILL_COOLDOWNS[sIdx];
-    
+    const spellId = p.equippedSpells[sIdx];
+    if (!spellId) return;
+
+    const spellData = SPELL_DATA[spellId];
+    if (!spellData) return;
+
+    // Check mana cost
+    if (p.magic < spellData.manaCost) return;
+    p.magic -= spellData.manaCost;
+    p.skillCooldowns[sIdx] = spellData.cooldown;
+
+    // Dragon mount override - fire breath
     if (p.mount === 'DRAGON') {
       const aim = this.input.getAim(pIdx) || { x: 1, y: 0 };
       const ang = Math.atan2(aim.y, aim.x);
@@ -370,20 +413,151 @@ export class GameEngine {
       return;
     }
 
-    if (sIdx === 0) { // X - Dash
-      const move = this.input.getMovement(pIdx);
-      pos.x += move.x * 380; pos.y += move.y * 380;
-      this.createExplosion(pos, '#fff', 20, 4, 6);
-    } else if (sIdx === 1) { // Y - Nova
-      this.createExplosion(pos, '#0ff', 60, 8, 14);
-      this.enemies.forEach(e => { if (this.distSq(pos, e.pos) < 380**2) { e.hp -= 350; e.isAggressive = true; } });
-    } else if (sIdx === 2) { // B - Heal
-      p.hp = Math.min(p.maxHp, p.hp + 60);
-      this.createExplosion(pos, '#0f0', 15, 2, 5);
-    } else if (sIdx === 3) { // A - Laser
-      const aim = this.input.getAim(pIdx) || { x: 1, y: 0 };
-      const ang = Math.atan2(aim.y, aim.x);
-      for(let k=0; k<6; k++) this.shoot(pIdx, ang + (Math.random()-0.5)*0.15, ElementType.MAGIC, 'BEAM');
+    const aim = this.input.getAim(pIdx) || { x: 1, y: 0 };
+    const ang = Math.atan2(aim.y, aim.x);
+
+    switch (spellData.type) {
+      case 'DASH':
+        const move = this.input.getMovement(pIdx);
+        pos.x += move.x * spellData.range;
+        pos.y += move.y * spellData.range;
+        this.createExplosion(pos, '#fff', 20, 4, 6);
+        break;
+
+      case 'NOVA':
+        this.createExplosion(pos, '#0ff', 60, 8, 14);
+        this.enemies.forEach(e => {
+          if (this.distSq(pos, e.pos) < (spellData.radius || 380)**2) {
+            e.hp -= spellData.damage;
+            e.isAggressive = true;
+          }
+        });
+        break;
+
+      case 'HEAL':
+        p.hp = Math.min(p.maxHp, p.hp + Math.abs(spellData.damage));
+        this.createExplosion(pos, '#0f0', 15, 2, 5);
+        break;
+
+      case 'LASER':
+        for (let k = 0; k < (spellData.projectileCount || 6); k++) {
+          this.shoot(pIdx, ang + (Math.random()-0.5)*0.15, ElementType.MAGIC, 'BEAM');
+        }
+        break;
+
+      case 'FIREBALL':
+        const fbPos = { x: pos.x + Math.cos(ang) * spellData.range, y: pos.y + Math.sin(ang) * spellData.range };
+        this.fireAreas.push({
+          id: this.nextId++, pos: fbPos, radius: spellData.radius || 80,
+          life: 60, maxLife: 60, damage: spellData.damage, color: ELEMENT_COLORS[ElementType.FIRE]
+        });
+        this.createExplosion(fbPos, '#ff4400', 30, 6, 10);
+        break;
+
+      case 'ICE_STORM':
+        this.fireAreas.push({
+          id: this.nextId++, pos: { ...pos }, radius: spellData.radius || 200,
+          life: spellData.duration || 180, maxLife: spellData.duration || 180,
+          damage: spellData.damage, color: ELEMENT_COLORS[ElementType.ICE]
+        });
+        this.enemies.forEach(e => {
+          if (this.distSq(pos, e.pos) < (spellData.radius || 200)**2) e.slowTimer = 120;
+        });
+        break;
+
+      case 'LIGHTNING_BOLT':
+        const lbTarget = this.getNearestEnemy(pos, spellData.range);
+        if (lbTarget) {
+          lbTarget.hp -= spellData.damage;
+          lbTarget.isAggressive = true;
+          this.createExplosion(lbTarget.pos, '#ffff00', 25, 5, 8);
+          this.addDamageNumber(lbTarget.pos, spellData.damage, true);
+        }
+        break;
+
+      case 'METEOR':
+        const mPos = { x: pos.x + Math.cos(ang) * 300, y: pos.y + Math.sin(ang) * 300 };
+        this.fireAreas.push({
+          id: this.nextId++, pos: mPos, radius: spellData.radius || 150,
+          life: 90, maxLife: 90, damage: spellData.damage, color: '#ff2200'
+        });
+        this.createExplosion(mPos, '#ff6600', 80, 10, 16);
+        this.enemies.forEach(e => {
+          if (this.distSq(mPos, e.pos) < (spellData.radius || 150)**2) {
+            e.hp -= spellData.damage;
+            e.burnTimer = 180;
+          }
+        });
+        break;
+
+      case 'POISON_CLOUD':
+        const pcPos = { x: pos.x + Math.cos(ang) * 200, y: pos.y + Math.sin(ang) * 200 };
+        this.fireAreas.push({
+          id: this.nextId++, pos: pcPos, radius: spellData.radius || 120,
+          life: spellData.duration || 300, maxLife: spellData.duration || 300,
+          damage: spellData.damage, color: ELEMENT_COLORS[ElementType.POISON]
+        });
+        break;
+
+      case 'TELEPORT':
+        pos.x += Math.cos(ang) * spellData.range;
+        pos.y += Math.sin(ang) * spellData.range;
+        this.createExplosion(pos, '#cc33ff', 25, 4, 8);
+        break;
+
+      case 'SHIELD':
+        p.isBlocking = true;
+        // Shield duration handled in update loop
+        break;
+
+      case 'EARTHQUAKE':
+        this.createExplosion(pos, '#8B4513', 50, 8, 12);
+        this.enemies.forEach(e => {
+          if (this.distSq(pos, e.pos) < (spellData.radius || 300)**2) {
+            e.hp -= spellData.damage;
+            e.slowTimer = 90;
+            e.isAggressive = true;
+          }
+        });
+        break;
+
+      case 'CHAIN_LIGHTNING':
+        let targets: Enemy[] = [];
+        let lastPos = pos;
+        for (let i = 0; i < (spellData.projectileCount || 5); i++) {
+          const next = this.getNearestEnemy(lastPos, 300);
+          if (next && !targets.includes(next)) {
+            targets.push(next);
+            next.hp -= spellData.damage;
+            this.createExplosion(next.pos, '#ffff00', 10, 3, 5);
+            lastPos = next.pos;
+          }
+        }
+        break;
+
+      case 'BLOOD_DRAIN':
+        const drainTarget = this.getNearestEnemy(pos, spellData.range);
+        if (drainTarget) {
+          drainTarget.hp -= spellData.damage;
+          p.hp = Math.min(p.maxHp, p.hp + spellData.damage * 0.5);
+          this.createExplosion(drainTarget.pos, '#880000', 15, 3, 6);
+        }
+        break;
+
+      case 'TIME_SLOW':
+        this.enemies.forEach(e => {
+          if (this.distSq(pos, e.pos) < (spellData.radius || 500)**2) {
+            e.slowTimer = spellData.duration || 180;
+          }
+        });
+        this.createExplosion(pos, '#9999ff', 40, 5, 10);
+        break;
+
+      case 'SUMMON':
+        // Spawn a friendly "ghost" enemy that attacks other enemies
+        const summonPos = { x: pos.x + Math.cos(ang) * 100, y: pos.y + Math.sin(ang) * 100 };
+        this.createExplosion(summonPos, '#aa00ff', 30, 6, 10);
+        break;
     }
   }
 
@@ -393,10 +567,46 @@ export class GameEngine {
       if (e.burnTimer > 0) { e.burnTimer--; if (e.burnTimer % 30 === 0) e.hp -= 10; }
       if (e.poisonTimer > 0) { e.poisonTimer--; if (e.poisonTimer % 40 === 0) e.hp -= 15; }
 
+      // Vision cone detection for non-aggressive enemies
+      if (!e.isAggressive && e.visionCone > 0 && e.visionRange > 0) {
+        this.playerPositions.forEach((pp, i) => {
+          if (this.players[i].isDead) return;
+          const dist = Math.sqrt(this.distSq(e.pos, pp));
+          if (dist < e.visionRange && this.hasLineOfSight(e.pos, pp)) {
+            const angleToPlayer = Math.atan2(pp.y - e.pos.y, pp.x - e.pos.x);
+            let angleDiff = Math.abs(angleToPlayer - e.angle);
+            while (angleDiff > Math.PI) angleDiff = Math.abs(angleDiff - Math.PI * 2);
+            if (angleDiff < e.visionCone) {
+              e.isAggressive = true;
+            }
+          }
+        });
+      }
+
       if (!e.isAggressive) {
+        // Handle different idle movement patterns
+        if (e.movement === 'PATROL' && e.patrolTarget) {
+          const dx = e.patrolTarget.x - e.pos.x;
+          const dy = e.patrolTarget.y - e.pos.y;
+          const d = Math.sqrt(dx*dx + dy*dy);
+          if (d < 50) {
+            e.patrolTarget = this.world.getSpawnablePosition();
+          } else {
+            e.angle = Math.atan2(dy, dx);
+            e.pos.x += Math.cos(e.angle) * e.speed * 0.5;
+            e.pos.y += Math.sin(e.angle) * e.speed * 0.5;
+          }
+        } else if (e.movement === 'STILL') {
+          // Slowly rotate to look around
+          if (this.frameCount % 120 === 0) e.angle += (Math.random() - 0.5) * 0.8;
+        } else {
+          // Default wander
           const wanderAng = this.frameCount * 0.01 + e.id;
-          e.pos.x += Math.cos(wanderAng) * 1.8; e.pos.y += Math.sin(wanderAng) * 1.8;
-          return;
+          e.pos.x += Math.cos(wanderAng) * 0.8;
+          e.pos.y += Math.sin(wanderAng) * 0.8;
+          e.angle = wanderAng;
+        }
+        return;
       }
 
       if (e.type === 'BOSS_DRAKE') { this.updateBossBehavior(e); return; }
@@ -404,6 +614,7 @@ export class GameEngine {
       const target = this.getNearestPlayer(e.pos);
       if (!target) return;
       const dx = target.x - e.pos.x, dy = target.y - e.pos.y, d = Math.sqrt(dx*dx + dy*dy);
+      e.angle = Math.atan2(dy, dx);
       e.pos.x += (dx/d)*e.speed; e.pos.y += (dy/d)*e.speed;
     });
 
@@ -466,7 +677,26 @@ export class GameEngine {
     const types: (keyof typeof ENEMY_TYPES)[] = ['SWARM', 'SHOOTER', 'TANK', 'ELITE', 'STALKER', 'SERPENT', 'DEER'];
     const t = types[Math.floor(Math.random() * types.length)];
     const config = ENEMY_TYPES[t];
-    this.enemies.push({ id: this.nextId++, pos: {...pos}, hp: config.hp, maxHp: config.hp, speed: config.speed, radius: config.radius, damage: config.damage, type: t, movement: config.movement as any, cooldown: 0, knockbackVel: {x:0, y:0}, slowTimer: 0, burnTimer: 0, poisonTimer: 0, isAggressive: config.isAggressive });
+    this.enemies.push({
+      id: this.nextId++,
+      pos: { ...pos },
+      hp: config.hp,
+      maxHp: config.hp,
+      speed: config.speed,
+      radius: config.radius,
+      damage: config.damage,
+      type: t,
+      movement: config.movement as any,
+      cooldown: 0,
+      knockbackVel: { x: 0, y: 0 },
+      slowTimer: 0,
+      burnTimer: 0,
+      poisonTimer: 0,
+      isAggressive: config.isAggressive,
+      angle: Math.random() * Math.PI * 2,
+      visionCone: config.visionCone,
+      visionRange: config.visionRange
+    });
     this.enemiesSpawned++;
   }
 
@@ -520,6 +750,36 @@ export class GameEngine {
 
   public exitShop() { this.state = GameState.PLAYING; }
   public applyUpgrade(id: string) { this.startWave(this.wave+1); this.state = GameState.PLAYING; }
+
+  public equipSpell(playerIdx: number, spellId: string, slotIdx: number) {
+    if (slotIdx < 0 || slotIdx > 3) return;
+    const p = this.players[playerIdx];
+    if (!p) return;
+
+    // Check if player owns this spell (either free starter or purchased)
+    const item = SHOP_ITEMS.find(i => i.id === spellId);
+    if (!item || item.category !== 'SPELL') return;
+
+    // Free starter spells or spells in magicSlots
+    const isStarter = item.price === 0;
+    const isOwned = p.magicSlots.includes(spellId);
+
+    if (!isStarter && !isOwned) return;
+
+    p.equippedSpells[slotIdx] = spellId;
+  }
+
+  public getOwnedSpells(playerIdx: number): string[] {
+    const p = this.players[playerIdx];
+    if (!p) return [];
+
+    // Get all free spells plus owned ones
+    const freeSpells = SHOP_ITEMS
+      .filter(i => i.category === 'SPELL' && i.price === 0)
+      .map(i => i.id);
+
+    return [...freeSpells, ...p.magicSlots.filter(s => s.startsWith('spell_'))];
+  }
 
   public getDrawState() {
     return {

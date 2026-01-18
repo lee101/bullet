@@ -1,10 +1,68 @@
 
 export class InputManager {
   private keys: Set<string> = new Set();
+  private uiNavCooldown: number = 0;
 
   constructor() {
     window.addEventListener('keydown', (e) => this.keys.add(e.code));
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+  }
+
+  public hasController(): boolean {
+    const gamepads = navigator.getGamepads();
+    for (const gp of gamepads) {
+      if (gp && gp.connected) return true;
+    }
+    return false;
+  }
+
+  public isBackPressed(): boolean {
+    if (this.keys.has('Escape')) return true;
+    const gp = navigator.getGamepads()[0];
+    if (gp) return gp.buttons[1].pressed; // B button
+    return false;
+  }
+
+  public isConfirmPressed(): boolean {
+    if (this.keys.has('Enter') || this.keys.has('Space')) return true;
+    const gp = navigator.getGamepads()[0];
+    if (gp) return gp.buttons[0].pressed; // A button
+    return false;
+  }
+
+  public getUINavigation(): { x: number; y: number } | null {
+    const now = Date.now();
+    if (now < this.uiNavCooldown) return null;
+
+    let dx = 0, dy = 0;
+    if (this.keys.has('ArrowUp') || this.keys.has('KeyW')) dy = -1;
+    if (this.keys.has('ArrowDown') || this.keys.has('KeyS')) dy = 1;
+    if (this.keys.has('ArrowLeft') || this.keys.has('KeyA')) dx = -1;
+    if (this.keys.has('ArrowRight') || this.keys.has('KeyD')) dx = 1;
+
+    const gp = navigator.getGamepads()[0];
+    if (gp) {
+      const threshold = 0.5;
+      if (gp.axes[1] < -threshold || gp.buttons[12]?.pressed) dy = -1;
+      if (gp.axes[1] > threshold || gp.buttons[13]?.pressed) dy = 1;
+      if (gp.axes[0] < -threshold || gp.buttons[14]?.pressed) dx = -1;
+      if (gp.axes[0] > threshold || gp.buttons[15]?.pressed) dx = 1;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+      this.uiNavCooldown = now + 200;
+      return { x: dx, y: dy };
+    }
+    return null;
+  }
+
+  public isTabPressed(direction: 'left' | 'right'): boolean {
+    const gp = navigator.getGamepads()[0];
+    if (gp) {
+      if (direction === 'left' && gp.buttons[4]?.pressed) return true; // LB
+      if (direction === 'right' && gp.buttons[5]?.pressed) return true; // RB
+    }
+    return false;
   }
 
   public getMovement(playerIndex: number): { x: number; y: number } {
