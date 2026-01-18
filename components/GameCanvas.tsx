@@ -5,6 +5,14 @@ import { GameEngine } from '../engine/GameEngine';
 
 interface GameCanvasProps { engine: GameEngine; }
 
+// Expose FPS for e2e testing
+declare global {
+  interface Window {
+    __GAME_FPS__: number;
+    __GAME_FPS_SAMPLES__: number[];
+  }
+}
+
 export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -12,8 +20,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     let animationId: number;
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fps = 60;
+    window.__GAME_FPS_SAMPLES__ = [];
 
     const render = () => {
+      // FPS calculation
+      frameCount++;
+      const now = performance.now();
+      if (now - lastTime >= 1000) {
+        fps = frameCount;
+        frameCount = 0;
+        lastTime = now;
+        window.__GAME_FPS__ = fps;
+        window.__GAME_FPS_SAMPLES__.push(fps);
+        if (window.__GAME_FPS_SAMPLES__.length > 60) window.__GAME_FPS_SAMPLES__.shift();
+      }
+
       engine.update();
       const state = engine.getDrawState();
       const cam = state.camera;
@@ -39,8 +63,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
 
       ctx.save(); ctx.translate(-cam.x, -cam.y);
 
-      // Fire Areas (Lingering Heat Shader Style)
+      // Fire Areas (viewport culled)
+      const fireViewMargin = 200;
       state.fireAreas.forEach(fa => {
+          if (fa.pos.x < cam.x - fireViewMargin || fa.pos.x > cam.x + CANVAS_WIDTH + fireViewMargin ||
+              fa.pos.y < cam.y - fireViewMargin || fa.pos.y > cam.y + CANVAS_HEIGHT + fireViewMargin) return;
           const pulse = 0.9 + Math.sin(Date.now() * 0.005) * 0.1;
           const gradient = ctx.createRadialGradient(fa.pos.x, fa.pos.y, 0, fa.pos.x, fa.pos.y, fa.radius);
           gradient.addColorStop(0, 'rgba(255, 100, 0, 0.85)');
@@ -50,33 +77,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.beginPath(); ctx.arc(fa.pos.x, fa.pos.y, fa.radius * pulse, 0, Math.PI*2); ctx.fill();
       });
 
-      // Mounts & Vision Cones (Mostly Opaque Light colored)
-      state.mounts.forEach(m => {
-          if (m.type === 'HORSE') {
-              ctx.save();
-              const coneRadius = 450;
-              const coneAngle = 1.1; // ~60 degrees
-              
-              // Light colored, mostly opaque shader-like fill
-              ctx.fillStyle = m.alerted ? 'rgba(255, 100, 100, 0.35)' : 'rgba(255, 255, 255, 0.35)';
-              ctx.beginPath();
-              ctx.moveTo(m.pos.x, m.pos.y);
-              
-              // LOS occlusion simulation
-              for (let a = m.angle - coneAngle/2; a <= m.angle + coneAngle/2; a += 0.05) {
-                  let r = coneRadius;
-                  for (let d = 40; d < coneRadius; d += 40) {
-                      const tx = m.pos.x + Math.cos(a) * d;
-                      const ty = m.pos.y + Math.sin(a) * d;
-                      if (world.getBiomeAt(tx, ty) === 'MOUNTAIN') { r = d; break; }
-                  }
-                  ctx.lineTo(m.pos.x + Math.cos(a) * r, m.pos.y + Math.sin(a) * r);
-              }
-              ctx.lineTo(m.pos.x, m.pos.y);
-              ctx.fill();
-              ctx.restore();
-          }
+      // Mounts (viewport culled, no vision cones)
+      const viewMargin = 100;
+      const viewLeft = cam.x - viewMargin;
+      const viewRight = cam.x + CANVAS_WIDTH + viewMargin;
+      const viewTop = cam.y - viewMargin;
+      const viewBottom = cam.y + CANVAS_HEIGHT + viewMargin;
 
+      state.mounts.forEach(m => {
+          if (m.pos.x < viewLeft || m.pos.x > viewRight || m.pos.y < viewTop || m.pos.y > viewBottom) return;
           const cfg = MOUNT_CONFIGS[m.type as keyof typeof MOUNT_CONFIGS];
           ctx.save(); ctx.translate(m.pos.x, m.pos.y); ctx.rotate(m.angle);
           ctx.fillStyle = cfg.color;
@@ -86,20 +95,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.fill(); ctx.restore();
       });
 
-      // Wandering Traders
+      // Wandering Traders (viewport culled)
       state.traders.forEach(tr => {
+          if (tr.pos.x < viewLeft || tr.pos.x > viewRight || tr.pos.y < viewTop || tr.pos.y > viewBottom) return;
           ctx.save(); ctx.translate(tr.pos.x, tr.pos.y); ctx.rotate(tr.angle);
           ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI*2); ctx.fill();
-          ctx.fillStyle = '#444'; ctx.fillRect(-10, -25, 20, 50); // Backpack
+          ctx.fillStyle = '#444'; ctx.fillRect(-10, -25, 20, 50);
           ctx.restore();
-          // Tooltip/Indicator
           ctx.fillStyle = 'white'; ctx.font = '10px Orbitron'; ctx.textAlign = 'center';
           ctx.fillText('TRADER [X]', tr.pos.x, tr.pos.y - 35);
       });
 
-      // Enemies
+      // Enemies (viewport culled)
       state.enemies.forEach(e => {
-          ctx.fillStyle = ENEMY_TYPES[e.type].color; 
+          if (e.pos.x < viewLeft - e.radius || e.pos.x > viewRight + e.radius ||
+              e.pos.y < viewTop - e.radius || e.pos.y > viewBottom + e.radius) return;
+          ctx.fillStyle = ENEMY_TYPES[e.type].color;
           if (e.slowTimer > 0) ctx.fillStyle = '#4dffff';
           if (e.burnTimer > 0) ctx.fillStyle = '#ff4d4d';
           if (e.poisonTimer > 0) ctx.fillStyle = '#a020f0';
@@ -107,8 +118,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.fillStyle = '#f00'; ctx.fillRect(e.pos.x - 10, e.pos.y - e.radius - 8, 20 * (e.hp / e.maxHp), 2);
       });
 
-      // Bullets
+      // Bullets (viewport culled)
       state.bullets.forEach(b => {
+        if (b.pos.x < viewLeft || b.pos.x > viewRight || b.pos.y < viewTop || b.pos.y > viewBottom) return;
         ctx.fillStyle = ELEMENT_COLORS[b.element];
         ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI*2); ctx.fill();
       });
@@ -133,7 +145,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(pos.x - 3, renderY - 3, 3, 0, Math.PI*2); ctx.fill();
       });
 
-      ctx.restore(); animationId = requestAnimationFrame(render);
+      ctx.restore();
+
+      // FPS display (top-left, small)
+      ctx.fillStyle = fps >= 55 ? 'rgba(0,255,0,0.7)' : fps >= 30 ? 'rgba(255,255,0,0.7)' : 'rgba(255,0,0,0.9)';
+      ctx.font = '12px monospace';
+      ctx.fillText(`FPS: ${fps}`, 10, 20);
+
+      animationId = requestAnimationFrame(render);
     };
     render(); return () => cancelAnimationFrame(animationId);
   }, [engine]);

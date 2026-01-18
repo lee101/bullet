@@ -329,10 +329,13 @@ export class GameEngine {
 
   private updateTraders() {
     this.traders.forEach(tr => {
+      // Skip simulation for far-away traders
+      if (!this.isInSimRange(tr.pos, 600)) return;
+
       const dx = tr.targetPos.x - tr.pos.x;
       const dy = tr.targetPos.y - tr.pos.y;
       const d = Math.sqrt(dx*dx + dy*dy);
-      
+
       if (d < 50) tr.targetPos = this.world.getSpawnablePosition();
       else {
         tr.angle = Math.atan2(dy, dx);
@@ -344,6 +347,9 @@ export class GameEngine {
 
   private updateMounts() {
     this.mounts.forEach(m => {
+      // Skip simulation for far-away mounts
+      if (!this.isInSimRange(m.pos, 600)) return;
+
       let isSeen = false;
       this.playerPositions.forEach((pp, i) => {
         if (this.players[i].isDead || this.players[i].mount) return;
@@ -352,7 +358,7 @@ export class GameEngine {
           const angToP = Math.atan2(pp.y - m.pos.y, pp.x - m.pos.x);
           let diff = Math.abs(angToP - m.angle);
           while (diff > Math.PI) diff = Math.abs(diff - Math.PI * 2);
-          
+
           if (diff < 0.85 && this.hasLineOfSight(m.pos, pp)) {
             isSeen = true; m.alerted = true;
             m.angle = angToP + Math.PI;
@@ -377,6 +383,9 @@ export class GameEngine {
   private updateFireAreas() {
     this.fireAreas.forEach(fa => {
       fa.life--;
+      // Only process damage for fire areas in range
+      if (!this.isInSimRange(fa.pos, 300)) return;
+
       if (this.frameCount % 15 === 0) {
         this.enemies.forEach(e => {
           if (this.distSq(fa.pos, e.pos) < fa.radius**2) { e.hp -= fa.damage; e.burnTimer = 120; }
@@ -563,9 +572,16 @@ export class GameEngine {
 
   private updateEnemies() {
     this.enemies.forEach(e => {
+      // Only fully simulate enemies in range
+      const inRange = this.isInSimRange(e.pos, 800);
+
+      // Always tick down timers
       if (e.slowTimer > 0) e.slowTimer--;
-      if (e.burnTimer > 0) { e.burnTimer--; if (e.burnTimer % 30 === 0) e.hp -= 10; }
-      if (e.poisonTimer > 0) { e.poisonTimer--; if (e.poisonTimer % 40 === 0) e.hp -= 15; }
+      if (e.burnTimer > 0) { e.burnTimer--; if (inRange && e.burnTimer % 30 === 0) e.hp -= 10; }
+      if (e.poisonTimer > 0) { e.poisonTimer--; if (inRange && e.poisonTimer % 40 === 0) e.hp -= 15; }
+
+      // Skip AI/movement for out-of-range enemies
+      if (!inRange) return;
 
       // Vision cone detection for non-aggressive enemies
       if (!e.isAggressive && e.visionCone > 0 && e.visionRange > 0) {
@@ -731,6 +747,13 @@ export class GameEngine {
   }
 
   private distSq(v1: Vec2, v2: Vec2) { return (v1.x-v2.x)**2 + (v1.y-v2.y)**2; }
+
+  private isInSimRange(pos: Vec2, margin: number = 600): boolean {
+    return pos.x >= this.camera.x - margin &&
+           pos.x <= this.camera.x + CANVAS_WIDTH + margin &&
+           pos.y >= this.camera.y - margin &&
+           pos.y <= this.camera.y + CANVAS_HEIGHT + margin;
+  }
 
   public buyItem(playerIdx: number, itemId: string, price: number) {
       if (this.money < price) return;
