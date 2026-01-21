@@ -22,7 +22,7 @@ export enum GameState {
   STATS = 'STATS'
 }
 
-export type MountType = 'HORSE' | 'CHARIOT' | 'DRAGON';
+export type MountType = 'HORSE' | 'CHARIOT' | 'DRAGON' | 'BOAT';
 
 export interface Mount {
   id: number;
@@ -221,7 +221,7 @@ export interface SpellData {
   projectileCount?: number;
 }
 
-export type Biome = 'SEA' | 'LOWLAND' | 'GRASS' | 'SWAMP' | 'MOUNTAIN' | 'TOWN';
+export type Biome = 'SEA' | 'SHORE' | 'RIVER' | 'LOWLAND' | 'GRASS' | 'SWAMP' | 'FOREST' | 'MOUNTAIN' | 'SNOW' | 'TOWN';
 
 export interface Coin {
   id: number;

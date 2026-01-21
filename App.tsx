@@ -43,10 +43,12 @@ const App: React.FC = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (gameState === GameState.SHOP) engine.exitShop();
-        else {
-          engine.reset();
-          setGameState(GameState.MENU);
+        if (gameState === GameState.SHOP) {
+          engine.exitShop();
+        } else if (gameState === GameState.PLAYING) {
+          engine.pause();
+        } else if (gameState === GameState.PAUSED) {
+          engine.resume();
         }
       }
     };
@@ -82,6 +84,15 @@ const App: React.FC = () => {
 
   const handleEquipSpell = (pIdx: number, spellId: string, slotIdx: number) => {
     engine.equipSpell(pIdx, spellId, slotIdx);
+  };
+
+  const handleResume = () => {
+    engine.resume();
+  };
+
+  const handleQuitToMenu = () => {
+    engine.reset();
+    setGameState(GameState.MENU);
   };
 
   return (
@@ -121,13 +132,36 @@ const App: React.FC = () => {
             )}
           </div>
 
+          {gameState === GameState.PAUSED && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md">
+              <div className="text-center p-12 bg-black/80 border border-white/20 rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.1)] max-w-md w-full">
+                <h2 className="text-5xl font-orbitron font-bold text-white mb-2">PAUSED</h2>
+                <p className="text-white/40 mb-10 tracking-[0.3em] uppercase text-sm">Press ESC to resume</p>
+                <div className="space-y-4">
+                  <button
+                    onClick={handleResume}
+                    className="px-10 py-4 bg-white/10 border border-white/20 text-white rounded-full font-bold uppercase tracking-widest hover:bg-white/20 transition-colors w-full"
+                  >
+                    Resume
+                  </button>
+                  <button
+                    onClick={handleQuitToMenu}
+                    className="px-10 py-4 bg-red-900/50 border border-red-500/30 text-red-400 rounded-full font-bold uppercase tracking-widest hover:bg-red-900/70 transition-colors w-full"
+                  >
+                    Quit to Menu
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {gameState === GameState.GAME_OVER && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-red-950/40 backdrop-blur-md">
               <div className="text-center p-12 bg-black border border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.2)] max-w-lg w-full">
                 <h2 className="text-6xl font-orbitron font-bold text-red-500 mb-2 text-center">HERO FALLEN</h2>
                 <p className="text-gray-400 mb-8 tracking-[0.2em] uppercase font-light text-center">The Ancient Citadel is Lost</p>
                 <div className="text-4xl font-bold mb-10 text-white font-orbitron text-center">SCORE: {drawState.score.toLocaleString()}</div>
-                <button 
+                <button
                   onClick={handleRestart}
                   className="px-10 py-4 bg-red-600 text-white rounded-full font-bold uppercase tracking-widest hover:bg-red-500 transition-colors shadow-xl w-full"
                 >

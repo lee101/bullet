@@ -118,18 +118,32 @@ export class GameEngine {
   }
 
   private spawnAmbientMounts() {
-    for (let i = 0; i < 40; i++) {
+    // Spawn land mounts
+    for (let i = 0; i < 60; i++) {
         const pos = this.world.getSpawnablePosition();
         const types: MountType[] = ['HORSE', 'CHARIOT', 'DRAGON'];
         const type = types[Math.floor(Math.pow(Math.random(), 2) * 3)];
-        this.mounts.push({ 
-          id: this.nextId++, 
-          pos, 
-          type, 
-          life: Infinity, 
-          angle: Math.random() * Math.PI * 2, 
-          alerted: false 
+        this.mounts.push({
+          id: this.nextId++,
+          pos,
+          type,
+          life: Infinity,
+          angle: Math.random() * Math.PI * 2,
+          alerted: false
         });
+    }
+
+    // Spawn boats on shorelines
+    const shorePositions = this.world.getShorePositions(25);
+    for (const pos of shorePositions) {
+      this.mounts.push({
+        id: this.nextId++,
+        pos,
+        type: 'BOAT',
+        life: Infinity,
+        angle: Math.random() * Math.PI * 2,
+        alerted: false
+      });
     }
   }
 
@@ -147,17 +161,34 @@ export class GameEngine {
   }
 
   private spawnIdleEnemies() {
-    const idleTypes: (keyof typeof ENEMY_TYPES)[] = ['SENTRY', 'PATROL', 'GUARD', 'WOLF'];
-    for (let i = 0; i < 30; i++) {
+    // Biome-based enemy spawning for more variety
+    const biomeEnemies: Record<string, (keyof typeof ENEMY_TYPES)[]> = {
+      GRASS: ['DEER', 'WOLF', 'PATROL'],
+      FOREST: ['WOLF', 'STALKER', 'GUARD', 'SERPENT'],
+      SWAMP: ['SERPENT', 'GHOST', 'PATROL'],
+      LOWLAND: ['SENTRY', 'PATROL', 'DEER'],
+      MOUNTAIN: ['GUARD', 'ELITE', 'SENTRY'],
+      SNOW: ['WOLF', 'ELITE', 'TANK'],
+    };
+
+    // Spawn more enemies across the larger world
+    for (let i = 0; i < 80; i++) {
       const pos = this.world.getSpawnablePosition();
-      const t = idleTypes[Math.floor(Math.random() * idleTypes.length)];
+      const biome = this.world.getBiomeAt(pos.x, pos.y);
+      const possibleTypes = biomeEnemies[biome] || ['SENTRY', 'PATROL'];
+      const t = possibleTypes[Math.floor(Math.random() * possibleTypes.length)];
       const config = ENEMY_TYPES[t];
+
+      // Random stat variation for uniqueness
+      const hpMult = 0.8 + Math.random() * 0.4;
+      const speedMult = 0.9 + Math.random() * 0.2;
+
       this.enemies.push({
         id: this.nextId++,
         pos: { ...pos },
-        hp: config.hp,
-        maxHp: config.hp,
-        speed: config.speed,
+        hp: Math.floor(config.hp * hpMult),
+        maxHp: Math.floor(config.hp * hpMult),
+        speed: config.speed * speedMult,
         radius: config.radius,
         damage: config.damage,
         type: t,
@@ -169,8 +200,8 @@ export class GameEngine {
         poisonTimer: 0,
         isAggressive: false,
         angle: Math.random() * Math.PI * 2,
-        visionCone: config.visionCone,
-        visionRange: config.visionRange,
+        visionCone: config.visionCone * (0.9 + Math.random() * 0.2),
+        visionRange: config.visionRange * (0.9 + Math.random() * 0.2),
         patrolTarget: config.movement === 'PATROL' ? this.world.getSpawnablePosition() : undefined
       });
     }
@@ -272,10 +303,23 @@ export class GameEngine {
       let finalSpeed = p.isBlocking ? p.speed * 0.4 : p.speed;
       if (p.mount) finalSpeed *= MOUNT_CONFIGS[p.mount].speedMult;
 
+      const oldX = pos.x, oldY = pos.y;
       pos.x += move.x * finalSpeed;
       pos.y += move.y * finalSpeed;
       pos.x = Math.max(0, Math.min(WORLD_WIDTH, pos.x));
       pos.y = Math.max(0, Math.min(WORLD_HEIGHT, pos.y));
+
+      // Mountain collision - only dragons can fly over mountains
+      const newBiome = this.world.getBiomeAt(pos.x, pos.y);
+      if (newBiome === 'MOUNTAIN' && p.mount !== 'DRAGON') {
+        pos.x = oldX;
+        pos.y = oldY;
+      }
+      // Water collision - need boat or dragon
+      if (newBiome === 'SEA' && p.mount !== 'DRAGON' && p.mount !== 'BOAT') {
+        pos.x = oldX;
+        pos.y = oldY;
+      }
 
       for (let s = 0; s < 4; s++) {
         p.skillCooldowns[s]--;
@@ -690,17 +734,32 @@ export class GameEngine {
   }
 
   private spawnEnemy(pos: Vec2) {
-    const types: (keyof typeof ENEMY_TYPES)[] = ['SWARM', 'SHOOTER', 'TANK', 'ELITE', 'STALKER', 'SERPENT', 'DEER'];
+    // Wave-based enemy selection - harder enemies appear in later waves
+    const earlyTypes: (keyof typeof ENEMY_TYPES)[] = ['SWARM', 'SHOOTER', 'DEER'];
+    const midTypes: (keyof typeof ENEMY_TYPES)[] = ['SWARM', 'SHOOTER', 'TANK', 'STALKER', 'SERPENT'];
+    const lateTypes: (keyof typeof ENEMY_TYPES)[] = ['TANK', 'ELITE', 'STALKER', 'GHOST', 'SERPENT'];
+
+    let types: (keyof typeof ENEMY_TYPES)[];
+    if (this.wave <= 3) types = earlyTypes;
+    else if (this.wave <= 7) types = midTypes;
+    else types = lateTypes;
+
     const t = types[Math.floor(Math.random() * types.length)];
     const config = ENEMY_TYPES[t];
+
+    // Scale stats with wave for progressive difficulty
+    const waveScale = 1 + (this.wave - 1) * 0.12;
+    const hpMult = waveScale * (0.9 + Math.random() * 0.2);
+    const dmgMult = 1 + (this.wave - 1) * 0.08;
+
     this.enemies.push({
       id: this.nextId++,
       pos: { ...pos },
-      hp: config.hp,
-      maxHp: config.hp,
-      speed: config.speed,
+      hp: Math.floor(config.hp * hpMult),
+      maxHp: Math.floor(config.hp * hpMult),
+      speed: config.speed * (1 + this.wave * 0.02),
       radius: config.radius,
-      damage: config.damage,
+      damage: Math.floor(config.damage * dmgMult),
       type: t,
       movement: config.movement as any,
       cooldown: 0,
@@ -708,7 +767,7 @@ export class GameEngine {
       slowTimer: 0,
       burnTimer: 0,
       poisonTimer: 0,
-      isAggressive: config.isAggressive,
+      isAggressive: true,
       angle: Math.random() * Math.PI * 2,
       visionCone: config.visionCone,
       visionRange: config.visionRange
@@ -772,6 +831,8 @@ export class GameEngine {
   }
 
   public exitShop() { this.state = GameState.PLAYING; }
+  public pause() { if (this.state === GameState.PLAYING) this.state = GameState.PAUSED; }
+  public resume() { if (this.state === GameState.PAUSED) this.state = GameState.PLAYING; }
   public applyUpgrade(id: string) { this.startWave(this.wave+1); this.state = GameState.PLAYING; }
 
   public equipSpell(playerIdx: number, spellId: string, slotIdx: number) {

@@ -4,8 +4,8 @@ import { ElementType, MountType, ShopItem, SpellData } from './types';
 export const CANVAS_WIDTH = 1280;
 export const CANVAS_HEIGHT = 720;
 
-export const WORLD_WIDTH = 4000;
-export const WORLD_HEIGHT = 4000;
+export const WORLD_WIDTH = 16000;
+export const WORLD_HEIGHT = 16000;
 
 export const GRID_SIZE = 40; 
 export const PLAYER_RADIUS = 15;
@@ -66,6 +66,7 @@ export const MOUNT_CONFIGS = {
   HORSE: { speedMult: 2.0, color: '#8B4513', label: 'STEED' },
   CHARIOT: { speedMult: 2.3, color: '#DAA520', label: 'WAR CHARIOT' },
   DRAGON: { speedMult: 3.0, color: '#DC143C', label: 'DRAKE' },
+  BOAT: { speedMult: 1.8, color: '#654321', label: 'BOAT' },
 };
 
 export const SKILL_COOLDOWNS = [180, 480, 600, 900]; // X, Y, B, A
@@ -180,10 +181,14 @@ export const TOWN_DIALOGUES = [
 ];
 
 export const BIOME_COLORS = {
-  SEA: '#001a33',
-  LOWLAND: '#3d2b1f', 
+  SEA: '#0a2a4a',
+  SHORE: '#c2b280',
+  RIVER: '#1a4a6a',
+  LOWLAND: '#3d2b1f',
   GRASS: '#2d4d1f',
-  SWAMP: '#1a1f1a',
-  MOUNTAIN: '#3a3a3a',
-  TOWN: '#4a4a50'
+  SWAMP: '#1a2f1a',
+  FOREST: '#1a3a1a',
+  MOUNTAIN: '#4a4a4a',
+  SNOW: '#d0d8e0',
+  TOWN: '#5a5a60'
 };
