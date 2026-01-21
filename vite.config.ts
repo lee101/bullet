@@ -20,6 +20,21 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        target: 'esnext',
+        minify: 'esbuild',
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'engine': ['./engine/GameEngine.ts', './engine/WorldGenerator.ts'],
+              'audio': ['./engine/AudioManager.ts'],
+              'ui': ['./components/HUD.tsx', './components/ShopUI.tsx', './components/MainMenu.tsx']
+            }
+          }
+        },
+        reportCompressedSize: true,
+        chunkSizeWarningLimit: 500
       }
     };
 });

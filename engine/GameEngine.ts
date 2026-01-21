@@ -21,8 +21,19 @@ import {
   WorldEvent,
   AttackDirection,
   EnemyCluster,
-  Campfire
+  Campfire,
+  SlashEffect,
+  FireTelegraph,
+  MagicWheelState,
+  MagicElement,
+  MagicProjectile,
+  Faction,
+  FactionCastle,
+  Ally,
+  Torch
 } from '../types';
+import { terrainRenderer } from './TerrainRenderer';
+import { assetManager } from './AssetManager';
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -47,10 +58,18 @@ import {
   WALL_HEIGHT,
   BUILD_GRID_SIZE,
   CITY_HEAL_COOLDOWN,
-  TOWN_RADIUS
+  TOWN_RADIUS,
+  ALLY_CONFIGS,
+  FACTION_CASTLE_CONFIG,
+  PLAYER_TEAM_COLORS,
+  PLAYER_COLORS,
+  ALL_CHARACTERS
 } from '../constants';
+import { InputType, CharacterDef } from '../types';
 import { InputManager } from './InputManager';
 import { WorldGenerator } from './WorldGenerator';
+import { MagicWheel, ELEMENT_COLORS as MAGIC_ELEMENT_COLORS } from './MagicWheel';
+import { SpatialHash } from './SpatialHash';
 
 export class GameEngine {
   private players: PlayerStats[] = [];
@@ -65,11 +84,18 @@ export class GameEngine {
   private fireAreas: FireArea[] = [];
   private walls: WallPiece[] = [];
   private towers: Tower[] = [];
-  private town: TownState = { id: 0, name: "Ancient Hub", prosperity: 10, tradeCount: 0, level: 1, pos: { x: WORLD_WIDTH/2, y: WORLD_HEIGHT/2 }, goldGeneration: 50, style: 'MEDIEVAL' };
+  private town: TownState = { id: 0, name: "Ancient Hub", prosperity: 10, tradeCount: 0, level: 1, pos: { x: WORLD_WIDTH/2, y: WORLD_HEIGHT/2 }, goldGeneration: 50, style: 'MEDIEVAL', faction: Faction.BLUE };
   private campfires: Campfire[] = [];
+  private torches: Torch[] = [];
   private playerCityHealCooldowns: number[] = [];
+  private pickups: Pickup[] = [];
+  private slashEffects: SlashEffect[] = [];
+  private fireTelegraphs: FireTelegraph[] = [];
+  private factionCastles: FactionCastle[] = [];
+  private allies: Ally[] = [];
   private input: InputManager;
   public world: WorldGenerator;
+  private enemySpatialHash: SpatialHash<Enemy> = new SpatialHash(200);
 
   private nextId: number = 0;
   private frameCount: number = 0;
@@ -91,13 +117,32 @@ export class GameEngine {
   private eventCooldown: number = 0;
   private announcements: { text: string; life: number; color: string; priority: number }[] = [];
 
+  // Magic Wheel System
+  private magicWheels: MagicWheel[] = [];
+  private wheelInputCooldowns: number[] = [];
+  private magicProjectiles: MagicProjectile[] = [];
+
   constructor(input: InputManager) {
     this.input = input;
     this.world = new WorldGenerator();
     this.reset();
   }
 
+  // Shadow state for instant restart
+  private shadowWorld: WorldGenerator | null = null;
+  private shadowReady = false;
+  private lastPlayerCount = 1;
+
   public reset() {
+    // Use pre-built shadow state if available
+    if (this.shadowReady && this.shadowWorld) {
+      this.world = this.shadowWorld;
+      this.shadowWorld = null;
+      this.shadowReady = false;
+    } else {
+      this.world = new WorldGenerator();
+    }
+
     this.players = [];
     this.playerPositions = [];
     this.bullets = [];
@@ -110,9 +155,15 @@ export class GameEngine {
     this.fireAreas = [];
     this.walls = [];
     this.towers = [];
-    this.town = { id: 0, name: "Citadel Bazaar", prosperity: 10, tradeCount: 0, level: 1, pos: { x: WORLD_WIDTH/2, y: WORLD_HEIGHT/2 }, goldGeneration: 50, style: 'MEDIEVAL' };
+    this.town = { id: 0, name: "Citadel Bazaar", prosperity: 10, tradeCount: 0, level: 1, pos: { x: WORLD_WIDTH/2, y: WORLD_HEIGHT/2 }, goldGeneration: 50, style: 'MEDIEVAL', faction: Faction.BLUE };
     this.campfires = [];
+    this.torches = [];
     this.playerCityHealCooldowns = [];
+    this.pickups = [];
+    this.slashEffects = [];
+    this.fireTelegraphs = [];
+    this.factionCastles = [];
+    this.allies = [];
     this.score = 0;
     this.money = 0;
     this.frameCount = 0;
@@ -126,28 +177,85 @@ export class GameEngine {
     this.clusters = [];
     this.eventCooldown = 0;
     this.announcements = [];
-    this.world = new WorldGenerator();
+    this.magicWheels = [];
+    this.wheelInputCooldowns = [];
+    this.magicProjectiles = [];
     this.camera = { x: WORLD_WIDTH / 2 - window.innerWidth / 2, y: WORLD_HEIGHT / 2 - window.innerHeight / 2 };
   }
 
-  public start(playerCount: number = 1) {
-    const spawn = this.world.getSpawnablePosition();
-    const colors = ['#4d99ff', '#ff4d99', '#4dff99', '#ffff4d'];
-    const count = Math.max(1, Math.min(4, playerCount));
+  // Pre-build next world in background for instant restart
+  private prepareNextWorld() {
+    if (this.shadowReady) return;
+    setTimeout(() => {
+      this.shadowWorld = new WorldGenerator();
+      for (let i = 0; i < 10; i++) this.shadowWorld.getSpawnablePosition();
+      this.shadowReady = true;
+      console.log('Shadow world ready');
+    }, 0);
+  }
 
-    for(let i = 0; i < count; i++) {
-        const p = JSON.parse(JSON.stringify(INITIAL_PLAYER_STATS));
-        p.id = i;
-        p.color = colors[i];
-        this.players.push(p);
-        this.playerPositions.push({ x: spawn.x + i * 40, y: spawn.y });
-        this.playerCityHealCooldowns.push(0);
+  // Pre-warm the engine while in menu for faster game start
+  public async preWarm() {
+    // Pre-load terrain textures and assets in parallel
+    await Promise.all([
+      terrainRenderer.load(),
+      assetManager.load()
+    ]);
+    // Pre-compute spawnable positions to warm caches
+    for (let i = 0; i < 10; i++) {
+      this.world.getSpawnablePosition();
+    }
+    // Pre-build shadow world for instant first start
+    this.prepareNextWorld();
+    console.log('Engine pre-warmed');
+  }
+
+  public start(playerCount: number = 1) {
+    this.startWithCharacters(
+      Array.from({ length: playerCount }, (_, i) => ({
+        slotIndex: i,
+        characterId: 'samurai',
+        controllerId: i,
+        inputType: 'GAMEPAD' as InputType
+      }))
+    );
+  }
+
+  public startWithCharacters(selections: { slotIndex: number; characterId: string; controllerId: number; inputType: InputType }[]) {
+    const spawn = this.world.getSpawnablePosition();
+    const count = Math.max(1, Math.min(4, selections.length));
+    this.lastPlayerCount = count;
+
+    for (let i = 0; i < count; i++) {
+      const sel = selections[i];
+      const charDef = ALL_CHARACTERS.find(c => c.id === sel.characterId) || ALL_CHARACTERS[0];
+      const p: PlayerStats = {
+        ...JSON.parse(JSON.stringify(INITIAL_PLAYER_STATS)),
+        id: i,
+        characterId: charDef.id,
+        hp: charDef.stats.hp,
+        maxHp: charDef.stats.hp,
+        speed: charDef.stats.speed,
+        damage: charDef.stats.damage,
+        magic: charDef.stats.magic,
+        maxMagic: charDef.stats.magic,
+        color: PLAYER_COLORS[i],
+        statsDetail: {
+          baseDamage: charDef.stats.damage,
+          baseHp: charDef.stats.hp,
+          baseSpeed: charDef.stats.speed,
+          baseMagic: charDef.stats.magic
+        }
+      };
+      this.players.push(p);
+      this.playerPositions.push({ x: spawn.x + i * 40, y: spawn.y });
+      this.playerCityHealCooldowns.push(0);
+      this.magicWheels.push(new MagicWheel());
+      this.wheelInputCooldowns.push(0);
     }
 
-    // Load campfires from world generator
     this.campfires = this.world.getCampfires();
-
-    // Update town with first generated town's style
+    this.torches = this.world.getTorches();
     const towns = this.world.getTowns();
     if (towns.length > 0) {
       this.town.style = towns[0].style;
@@ -159,30 +267,112 @@ export class GameEngine {
     this.spawnAmbientMounts();
     this.spawnTraders();
     this.spawnIdleEnemies();
+    this.spawnWorldPickups();
+    this.spawnFactionCastles();
     this.startWave(1);
     this.state = GameState.PLAYING;
   }
 
+  public addPlayerMidGame(characterId: string, controllerId: number, inputType: InputType): number {
+    if (this.players.length >= 4) return -1;
+    const charDef = ALL_CHARACTERS.find(c => c.id === characterId) || ALL_CHARACTERS[0];
+    const i = this.players.length;
+    const existingPos = this.playerPositions[0] || { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 };
+    const p: PlayerStats = {
+      ...JSON.parse(JSON.stringify(INITIAL_PLAYER_STATS)),
+      id: i,
+      characterId: charDef.id,
+      hp: charDef.stats.hp,
+      maxHp: charDef.stats.hp,
+      speed: charDef.stats.speed,
+      damage: charDef.stats.damage,
+      magic: charDef.stats.magic,
+      maxMagic: charDef.stats.magic,
+      color: PLAYER_COLORS[i],
+      statsDetail: {
+        baseDamage: charDef.stats.damage,
+        baseHp: charDef.stats.hp,
+        baseSpeed: charDef.stats.speed,
+        baseMagic: charDef.stats.magic
+      }
+    };
+    this.players.push(p);
+    this.playerPositions.push({ x: existingPos.x + 50, y: existingPos.y });
+    this.playerCityHealCooldowns.push(0);
+    this.magicWheels.push(new MagicWheel());
+    this.wheelInputCooldowns.push(0);
+    return i;
+  }
+
+  public removePlayer(playerIndex: number): void {
+    if (playerIndex < 0 || playerIndex >= this.players.length) return;
+    this.players.splice(playerIndex, 1);
+    this.playerPositions.splice(playerIndex, 1);
+    this.playerCityHealCooldowns.splice(playerIndex, 1);
+    this.magicWheels.splice(playerIndex, 1);
+    this.wheelInputCooldowns.splice(playerIndex, 1);
+    this.players.forEach((p, i) => p.id = i);
+  }
+
+  public getPlayerCount(): number {
+    return this.players.length;
+  }
+
   private spawnAmbientMounts() {
-    // Spawn land mounts
-    for (let i = 0; i < 60; i++) {
-        const pos = this.world.getSpawnablePosition();
-        const types: MountType[] = ['HORSE', 'CHARIOT', 'DRAGON'];
-        const type = types[Math.floor(Math.pow(Math.random(), 2) * 3)];
-        const cfg = MOUNT_CONFIGS[type];
+    // Spawn horse herds (clusters of 2-4) - reduced from 12 to 6 herds
+    for (let i = 0; i < 6; i++) {
+      const centerPos = this.world.getSpawnablePosition();
+      const herdSize = 2 + Math.floor(Math.random() * 3);
+      const cfg = MOUNT_CONFIGS.HORSE;
+      for (let j = 0; j < herdSize; j++) {
+        const offset = { x: (Math.random() - 0.5) * 120, y: (Math.random() - 0.5) * 120 };
         this.mounts.push({
           id: this.nextId++,
-          pos,
-          type,
+          pos: { x: centerPos.x + offset.x, y: centerPos.y + offset.y },
+          type: 'HORSE',
           hp: cfg.hp,
           maxHp: cfg.hp,
           angle: Math.random() * Math.PI * 2,
-          alerted: false
+          alerted: false,
+          riders: []
         });
+      }
     }
 
-    // Spawn boats on shorelines
-    const shorePositions = this.world.getShorePositions(25);
+    // Spawn chariots (scattered) - reduced from 15 to 8
+    for (let i = 0; i < 8; i++) {
+      const pos = this.world.getSpawnablePosition();
+      const cfg = MOUNT_CONFIGS.CHARIOT;
+      this.mounts.push({
+        id: this.nextId++,
+        pos,
+        type: 'CHARIOT',
+        hp: cfg.hp,
+        maxHp: cfg.hp,
+        angle: Math.random() * Math.PI * 2,
+        alerted: false,
+        riders: []
+      });
+    }
+
+    // Spawn rare dragons (boss-like, few) - reduced from 5 to 2
+    for (let i = 0; i < 2; i++) {
+      const pos = this.world.getSpawnablePosition();
+      const cfg = MOUNT_CONFIGS.DRAGON;
+      this.mounts.push({
+        id: this.nextId++,
+        pos,
+        type: 'DRAGON',
+        hp: cfg.hp,
+        maxHp: cfg.hp,
+        angle: Math.random() * Math.PI * 2,
+        alerted: false,
+        riders: []
+      });
+    }
+
+    // Spawn boats on shorelines - reduced from 25 to 10
+    const shorePositions = this.world.getShorePositions(10);
     for (const pos of shorePositions) {
       const cfg = MOUNT_CONFIGS.BOAT;
       this.mounts.push({
@@ -192,7 +382,8 @@ export class GameEngine {
         hp: cfg.hp,
         maxHp: cfg.hp,
         angle: Math.random() * Math.PI * 2,
-        alerted: false
+        alerted: false,
+        riders: []
       });
     }
   }
@@ -221,8 +412,8 @@ export class GameEngine {
       SNOW: ['WOLF', 'ELITE', 'TANK', 'SWARM_QUEEN', 'MIRROR'],
     };
 
-    // Spawn more enemies across the larger world
-    for (let i = 0; i < 80; i++) {
+    // Spawn ambient enemies - reduced from 80 to 30 for performance
+    for (let i = 0; i < 30; i++) {
       const pos = this.world.getSpawnablePosition();
       const biome = this.world.getBiomeAt(pos.x, pos.y);
       const possibleTypes = biomeEnemies[biome] || ['SENTRY', 'PATROL'];
@@ -253,6 +444,78 @@ export class GameEngine {
         visionCone: config.visionCone * (0.9 + Math.random() * 0.2),
         visionRange: config.visionRange * (0.9 + Math.random() * 0.2),
         patrolTarget: config.movement === 'PATROL' ? this.world.getSpawnablePosition() : undefined
+      });
+    }
+  }
+
+  private spawnFactionCastles() {
+    const cfg = FACTION_CASTLE_CONFIG;
+    const towns = this.world.getTowns();
+
+    // Spawn 4-6 enemy (red) castles spread around the map
+    const numCastles = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < numCastles; i++) {
+      let pos: Vec2;
+      let attempts = 0;
+      do {
+        pos = {
+          x: 1500 + Math.random() * (WORLD_WIDTH - 3000),
+          y: 1500 + Math.random() * (WORLD_HEIGHT - 3000)
+        };
+        attempts++;
+      } while (attempts < 20 && (
+        this.world.getBiomeAt(pos.x, pos.y) === 'SEA' ||
+        this.world.getBiomeAt(pos.x, pos.y) === 'MOUNTAIN' ||
+        this.distSq(pos, this.town.pos) < 3000 * 3000 ||
+        towns.some(t => this.distSq(pos, t.pos) < 1500 * 1500) ||
+        this.factionCastles.some(c => this.distSq(pos, c.pos) < 2500 * 2500)
+      ));
+
+      this.factionCastles.push({
+        id: this.nextId++,
+        pos,
+        faction: Faction.RED,
+        hp: cfg.hp,
+        maxHp: cfg.hp,
+        level: 1 + Math.floor(Math.random() * 3),
+        spawnCooldown: 300 + Math.random() * 300,
+        siegeActive: false,
+        siegeWave: 0,
+        siegeEnemiesRemaining: 0
+      });
+    }
+
+    // Spawn 2-3 friendly (blue) castles near player areas
+    const numAllyCastles = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < numAllyCastles; i++) {
+      let pos: Vec2;
+      let attempts = 0;
+      const nearTown = towns[Math.floor(Math.random() * towns.length)] || this.town;
+      do {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 800 + Math.random() * 1200;
+        pos = {
+          x: nearTown.pos.x + Math.cos(ang) * dist,
+          y: nearTown.pos.y + Math.sin(ang) * dist
+        };
+        attempts++;
+      } while (attempts < 20 && (
+        this.world.getBiomeAt(pos.x, pos.y) === 'SEA' ||
+        this.world.getBiomeAt(pos.x, pos.y) === 'MOUNTAIN' ||
+        this.factionCastles.some(c => this.distSq(pos, c.pos) < 1500 * 1500)
+      ));
+
+      this.factionCastles.push({
+        id: this.nextId++,
+        pos,
+        faction: Faction.BLUE,
+        hp: cfg.hp,
+        maxHp: cfg.hp,
+        level: 1,
+        spawnCooldown: 600 + Math.random() * 300,
+        siegeActive: false,
+        siegeWave: 0,
+        siegeEnemiesRemaining: 0
       });
     }
   }
@@ -297,6 +560,10 @@ export class GameEngine {
     if (this.state !== GameState.PLAYING) return;
     this.frameCount++;
 
+    // Rebuild spatial hash for efficient queries
+    this.enemySpatialHash.clear();
+    this.enemySpatialHash.insertAll(this.enemies);
+
     let avgX = 0, avgY = 0, aliveCount = 0;
     this.playerPositions.forEach((pos, i) => {
         if (!this.players[i].isDead) {
@@ -314,7 +581,11 @@ export class GameEngine {
       const pos = this.playerPositions[i];
       if (p.isDead) return;
 
-      p.magic = Math.min(p.maxMagic, p.magic + 0.35); 
+      p.magic = Math.min(p.maxMagic, p.magic + 0.35);
+      // Passive health regen (slow)
+      if (this.frameCount % 60 === 0 && p.hp < p.maxHp) {
+        p.hp = Math.min(p.maxHp, p.hp + 1);
+      }
       const move = this.input.getMovement(i);
       
       if (p.z === 0 && this.input.isJumpPressed(i)) p.zVel = JUMP_FORCE;
@@ -340,23 +611,40 @@ export class GameEngine {
         p.zVel = JUMP_FORCE;
       }
 
-      // Mounting with Sneak Logic
-      if (this.input.isRevivePressed(i)) {
-          this.mounts.forEach((m, mi) => {
+      // Mounting with Sneak Logic - multi-rider support for chariot/dragon/boat
+      if (this.input.isRevivePressed(i) && !p.mount) {
+          for (const m of this.mounts) {
               const dSq = this.distSq(m.pos, pos);
               if (dSq < 70 * 70) {
+                  const cfg = MOUNT_CONFIGS[m.type];
                   const angleToPlayer = Math.atan2(pos.y - m.pos.y, pos.x - m.pos.x);
                   let diff = Math.abs(angleToPlayer - m.angle);
                   while (diff > Math.PI) diff = Math.abs(diff - Math.PI * 2);
-                  
-                  const isBehind = diff > 2.0; 
-                  if (!m.alerted || isBehind) {
+
+                  const isBehind = diff > 2.0;
+                  const canMount = !m.alerted || isBehind || m.riders.length > 0;
+                  const hasRoom = m.riders.length < cfg.maxRiders;
+
+                  if (canMount && hasRoom && !m.riders.includes(i)) {
                     p.mount = m.type;
-                    this.mounts.splice(mi, 1);
+                    p.mountId = m.id;
+                    m.riders.push(i);
                     this.createExplosion(pos, '#fff', 15, 2, 4);
+                    break;
                   }
               }
-          });
+          }
+      }
+
+      // Dismount with R when already mounted
+      if (this.input.isRevivePressed(i) && p.mount && p.mountId !== null) {
+          const mount = this.mounts.find(m => m.id === p.mountId);
+          if (mount) {
+            mount.riders = mount.riders.filter(r => r !== i);
+          }
+          p.mount = null;
+          p.mountId = null;
+          this.createExplosion(pos, '#fff', 10, 1, 3);
       }
 
       // Interaction Check: Town or Trader
@@ -373,22 +661,35 @@ export class GameEngine {
       if (p.mount) finalSpeed *= MOUNT_CONFIGS[p.mount].speedMult;
 
       const oldX = pos.x, oldY = pos.y;
-      pos.x += move.x * finalSpeed;
-      pos.y += move.y * finalSpeed;
-      pos.x = Math.max(0, Math.min(WORLD_WIDTH, pos.x));
-      pos.y = Math.max(0, Math.min(WORLD_HEIGHT, pos.y));
+      const currentMount = p.mountId !== null ? this.mounts.find(m => m.id === p.mountId) : null;
+      const isDriver = currentMount && currentMount.riders[0] === i;
 
-      // Mountain collision - only dragons can fly over mountains
+      if (currentMount && !isDriver) {
+        // Passenger - follow mount with offset
+        const riderIdx = currentMount.riders.indexOf(i);
+        const offsetAngle = currentMount.angle + Math.PI + (riderIdx - 1) * 0.7;
+        const offsetDist = 20 + riderIdx * 12;
+        pos.x = currentMount.pos.x + Math.cos(offsetAngle) * offsetDist;
+        pos.y = currentMount.pos.y + Math.sin(offsetAngle) * offsetDist;
+      } else {
+        pos.x += move.x * finalSpeed;
+        pos.y += move.y * finalSpeed;
+        pos.x = Math.max(0, Math.min(WORLD_WIDTH, pos.x));
+        pos.y = Math.max(0, Math.min(WORLD_HEIGHT, pos.y));
+
+        // Mountain collision
+        const biome = this.world.getBiomeAt(pos.x, pos.y);
+        if (biome === 'MOUNTAIN' && p.mount !== 'DRAGON') { pos.x = oldX; pos.y = oldY; }
+        if (biome === 'SEA' && p.mount !== 'DRAGON' && p.mount !== 'BOAT') { pos.x = oldX; pos.y = oldY; }
+
+        // Driver updates mount position
+        if (currentMount && isDriver) {
+          currentMount.pos = { ...pos };
+          if (move.x !== 0 || move.y !== 0) currentMount.angle = Math.atan2(move.y, move.x);
+        }
+      }
+
       const newBiome = this.world.getBiomeAt(pos.x, pos.y);
-      if (newBiome === 'MOUNTAIN' && p.mount !== 'DRAGON') {
-        pos.x = oldX;
-        pos.y = oldY;
-      }
-      // Water collision - need boat or dragon
-      if (newBiome === 'SEA' && p.mount !== 'DRAGON' && p.mount !== 'BOAT') {
-        pos.x = oldX;
-        pos.y = oldY;
-      }
 
       // City auto-heal - full HP when entering city, 2min cooldown
       if (this.playerCityHealCooldowns[i] > 0) this.playerCityHealCooldowns[i]--;
@@ -404,24 +705,125 @@ export class GameEngine {
         if (p.skillCooldowns[s] <= 0 && this.input.isSkillPressed(i, s)) this.activateSkill(i, s);
       }
 
+      // Limit Break: L3+R3 when fully charged
+      if (!p.isLimitBreakActive) {
+        p.limitBreakCharge = Math.min(LIMIT_BREAK_MAX_CHARGE, p.limitBreakCharge + LIMIT_BREAK_REGEN_PER_FRAME);
+        if (p.limitBreakCharge >= LIMIT_BREAK_MAX_CHARGE && this.input.isLimitBreakPressed(i)) {
+          p.isLimitBreakActive = true;
+          p.limitBreakTimer = LIMIT_BREAK_DURATION;
+          p.limitBreakCharge = 0;
+          this.activateLimitBreak(i);
+        }
+      } else {
+        p.limitBreakTimer--;
+        this.updateLimitBreak(i);
+        if (p.limitBreakTimer <= 0) {
+          p.isLimitBreakActive = false;
+        }
+      }
+
       p.autoAttackCooldown--;
       if (p.autoAttackCooldown <= 0) {
-          const nearest = this.getNearestEnemy(pos, 600);
-          if (nearest && nearest.isAggressive) {
-              const ang = Math.atan2(nearest.pos.y - pos.y, nearest.pos.x - pos.x);
+          const aim = this.input.getAim(i);
+          if (aim) {
+              const ang = Math.atan2(aim.y, aim.x);
+              p.lastAimAngle = ang;
               this.shoot(i, ang, ElementType.PHYSICAL, p.weaponType);
-              p.autoAttackCooldown = 30;
+              p.autoAttackCooldown = 20;
           }
+      }
+
+      // Magic Wheel Controls
+      if (this.wheelInputCooldowns[i] > 0) this.wheelInputCooldowns[i]--;
+      const wheel = this.magicWheels[i];
+      if (wheel) {
+        const rightStick = this.input.getRightStick(i);
+        wheel.updateAim(rightStick.x, rightStick.y);
+        wheel.updateCharge(1);
+
+        if (this.input.isWheelOpenPressed(i) && this.wheelInputCooldowns[i] <= 0) {
+          wheel.toggleWheel();
+          this.wheelInputCooldowns[i] = 15;
+        }
+
+        if (wheel.getState().isOpen) {
+          if (this.input.isWheelSelectPressed(i) && this.wheelInputCooldowns[i] <= 0) {
+            if (wheel.selectElement()) {
+              this.createExplosion(pos, MAGIC_ELEMENT_COLORS[wheel.getElementForSegment(wheel.getState().selectedSegment)], 8, 2, 3);
+            }
+            this.wheelInputCooldowns[i] = 12;
+          }
+
+          if (this.input.isWheelClearPressed(i) && this.wheelInputCooldowns[i] <= 0) {
+            wheel.clearStack();
+            this.wheelInputCooldowns[i] = 15;
+          }
+
+          if (this.input.isWheelModePressed(i) && this.wheelInputCooldowns[i] <= 0) {
+            wheel.cycleCastMode();
+            this.wheelInputCooldowns[i] = 20;
+          }
+
+          if (this.input.isModifierCyclePressed(i) && this.wheelInputCooldowns[i] <= 0) {
+            wheel.cycleModifier();
+            this.wheelInputCooldowns[i] = 20;
+          }
+
+          if (this.input.isWheelCastPressed(i) && this.wheelInputCooldowns[i] <= 0) {
+            const manaCost = wheel.calculateManaCost();
+            if (p.magic >= manaCost && wheel.getState().stack.elements.length > 0) {
+              p.magic -= manaCost;
+              const aimAngle = rightStick.x !== 0 || rightStick.y !== 0
+                ? Math.atan2(rightStick.y, rightStick.x)
+                : p.lastAimAngle;
+
+              const castMode = wheel.getState().castMode;
+              if (castMode === 'ATTACK') {
+                const projs = wheel.cast(i, pos, aimAngle);
+                projs.forEach(proj => this.magicProjectiles.push(proj));
+              } else if (castMode === 'SELF') {
+                const result = wheel.castSelf(i, pos);
+                if (result.heal > 0) {
+                  p.hp = Math.min(p.maxHp, p.hp + result.heal);
+                  this.addDamageNumber({ x: pos.x, y: pos.y - 20 }, result.heal, false, '+' + result.heal);
+                }
+                if (result.shield) p.isBlocking = true;
+                this.createExplosion(pos, '#40ff90', 20, 3, 5);
+              } else if (castMode === 'AREA') {
+                const area = wheel.castArea(pos, aimAngle);
+                if (area) {
+                  this.fireAreas.push({
+                    id: this.nextId++,
+                    pos: area.pos,
+                    radius: area.radius,
+                    life: area.duration,
+                    maxLife: area.duration,
+                    damage: area.damage,
+                    color: MAGIC_ELEMENT_COLORS[area.elements[0]] || '#cc33ff'
+                  });
+                }
+              }
+              wheel.closeWheel();
+              this.wheelInputCooldowns[i] = 30;
+            }
+          }
+        }
       }
     });
 
+    this.updateMagicProjectiles();
     this.updateTraders();
     this.updateAttacks();
     this.updateWalls();
     this.updateTowers();
     this.updateEnemies();
     this.updateFireAreas();
+    this.updateSlashEffects();
+    this.updateFireTelegraphs();
     this.updateMounts();
+    this.updatePickups();
+    this.updateFactionCastles();
+    this.updateAllies();
     this.updateEvents();
     this.updateAnnouncements();
 
@@ -471,6 +873,17 @@ export class GameEngine {
         });
     });
     this.coins = this.coins.filter(c => c.life > 0);
+
+    this.players.forEach((p, i) => {
+      if (!p.isDead && p.hp <= 0) {
+        p.isDead = true;
+        this.createExplosion(this.playerPositions[i], '#ff0000', 30, 5, 8);
+      }
+    });
+    if (this.players.every(p => p.isDead)) {
+      this.state = GameState.GAME_OVER;
+      this.prepareNextWorld();
+    }
   }
 
   private updateTraders() {
@@ -493,11 +906,11 @@ export class GameEngine {
 
   private updateMounts() {
     this.mounts.forEach(m => {
-      // Skip simulation for far-away mounts
       if (!this.isInSimRange(m.pos, 600)) return;
 
-      // Enemy damage to mounts
       const mountRadius = m.type === 'DRAGON' ? 40 : m.type === 'CHARIOT' ? 32 : 24;
+
+      // Enemy damage to mounts
       this.enemies.forEach(e => {
         if (!e.isAggressive) return;
         if (this.distSq(m.pos, e.pos) < (mountRadius + e.radius) ** 2) {
@@ -506,6 +919,89 @@ export class GameEngine {
         }
       });
 
+      // Horses flee from aggressive enemies
+      if (m.type === 'HORSE') {
+        let fleeVec = { x: 0, y: 0 };
+        this.enemies.forEach(e => {
+          if (!e.isAggressive) return;
+          const d = Math.sqrt(this.distSq(m.pos, e.pos));
+          if (d < 300) {
+            const strength = (300 - d) / 300;
+            fleeVec.x += (m.pos.x - e.pos.x) / d * strength * 4;
+            fleeVec.y += (m.pos.y - e.pos.y) / d * strength * 4;
+          }
+        });
+        if (fleeVec.x !== 0 || fleeVec.y !== 0) {
+          m.pos.x += fleeVec.x;
+          m.pos.y += fleeVec.y;
+          m.angle = Math.atan2(fleeVec.y, fleeVec.x);
+          m.alerted = true;
+        }
+      }
+
+      // Dragon boss behavior - aggressive, breathes fire, hard to catch
+      if (m.type === 'DRAGON') {
+        let nearestPlayer: { pos: { x: number; y: number }; dist: number } | null = null;
+        this.playerPositions.forEach((pp, i) => {
+          if (this.players[i].isDead || this.players[i].mount) return;
+          const d = Math.sqrt(this.distSq(m.pos, pp));
+          if (!nearestPlayer || d < nearestPlayer.dist) nearestPlayer = { pos: pp, dist: d };
+        });
+
+        if (nearestPlayer && nearestPlayer.dist < 600) {
+          m.alerted = true;
+          const angToP = Math.atan2(nearestPlayer.pos.y - m.pos.y, nearestPlayer.pos.x - m.pos.x);
+
+          if (nearestPlayer.dist < 200) {
+            // Too close - circle and attack
+            const orbitAng = angToP + Math.PI / 2 + Math.sin(this.frameCount * 0.02) * 0.5;
+            m.pos.x += Math.cos(orbitAng) * 5;
+            m.pos.y += Math.sin(orbitAng) * 5;
+            m.angle = angToP;
+
+            // Breathe fire at player
+            if (this.frameCount % 90 === 0) {
+              for (let i = -2; i <= 2; i++) {
+                const fireAng = angToP + i * 0.15;
+                const fPos = { x: m.pos.x + Math.cos(fireAng) * 80, y: m.pos.y + Math.sin(fireAng) * 80 };
+                this.fireAreas.push({ id: this.nextId++, pos: fPos, radius: 40, life: 90, maxLife: 90, damage: 15, color: '#ff4400' });
+              }
+              this.createExplosion(m.pos, '#ff6600', 15, 3, 5);
+            }
+          } else if (nearestPlayer.dist < 400) {
+            // Medium range - strafe and dive occasionally
+            const strafeAng = angToP + Math.PI / 2;
+            m.pos.x += Math.cos(strafeAng) * 3;
+            m.pos.y += Math.sin(strafeAng) * 3;
+            m.angle = angToP;
+
+            // Occasional dive attack
+            if (this.frameCount % 180 === 0 && Math.random() < 0.4) {
+              m.pos.x += Math.cos(angToP) * 150;
+              m.pos.y += Math.sin(angToP) * 150;
+              this.createExplosion(m.pos, '#ff4400', 20, 4, 6);
+            }
+          } else {
+            // Far - fly away, circle back
+            const fleeAng = angToP + Math.PI + Math.sin(this.frameCount * 0.01) * 0.8;
+            m.pos.x += Math.cos(fleeAng) * 4;
+            m.pos.y += Math.sin(fleeAng) * 4;
+            m.angle = fleeAng;
+          }
+        } else {
+          // Idle dragon - soar majestically
+          m.alerted = false;
+          if (this.frameCount % 120 === 0) m.angle += (Math.random() - 0.5) * 0.6;
+          m.pos.x += Math.cos(m.angle) * 2;
+          m.pos.y += Math.sin(m.angle) * 2;
+        }
+
+        m.pos.x = Math.max(0, Math.min(WORLD_WIDTH, m.pos.x));
+        m.pos.y = Math.max(0, Math.min(WORLD_HEIGHT, m.pos.y));
+        return;
+      }
+
+      // Standard mount behavior (horses, chariots, boats)
       let isSeen = false;
       this.playerPositions.forEach((pp, i) => {
         if (this.players[i].isDead || this.players[i].mount) return;
@@ -525,10 +1021,10 @@ export class GameEngine {
       });
 
       if (!isSeen) {
-          m.alerted = false;
-          if (this.frameCount % 180 === 0) m.angle += (Math.random()-0.5);
-          m.pos.x += Math.cos(m.angle) * 0.45;
-          m.pos.y += Math.sin(m.angle) * 0.45;
+        m.alerted = false;
+        if (this.frameCount % 180 === 0) m.angle += (Math.random() - 0.5);
+        m.pos.x += Math.cos(m.angle) * 0.45;
+        m.pos.y += Math.sin(m.angle) * 0.45;
       }
 
       m.pos.x = Math.max(0, Math.min(WORLD_WIDTH, m.pos.x));
@@ -545,6 +1041,89 @@ export class GameEngine {
     });
   }
 
+  private spawnWorldPickups() {
+    const pickupTypes: Pickup['type'][] = ['HEALTH_POTION', 'MANA_POTION', 'COIN_BAG', 'CHEST', 'SPEED_BOOST', 'DAMAGE_BOOST'];
+    const weights = [30, 20, 25, 10, 8, 7]; // relative spawn weights
+
+    // Spawn initial pickups across the world
+    for (let i = 0; i < 80; i++) {
+      const pos = this.world.getSpawnablePosition();
+      const roll = Math.random() * 100;
+      let cumulative = 0;
+      let type: Pickup['type'] = 'HEALTH_POTION';
+      for (let j = 0; j < pickupTypes.length; j++) {
+        cumulative += weights[j];
+        if (roll < cumulative) { type = pickupTypes[j]; break; }
+      }
+      this.pickups.push({
+        id: this.nextId++,
+        pos,
+        type,
+        life: type === 'CHEST' ? Infinity : 3600 // chests permanent, others 1 min
+      });
+    }
+  }
+
+  private updatePickups() {
+    // Spawn new pickups periodically
+    if (this.frameCount % 600 === 0 && this.pickups.length < 100) {
+      const pos = this.world.getSpawnablePosition();
+      const types: Pickup['type'][] = ['HEALTH_POTION', 'MANA_POTION', 'COIN_BAG'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      this.pickups.push({ id: this.nextId++, pos, type, life: 3600 });
+    }
+
+    // Player collection
+    this.pickups.forEach(pk => {
+      pk.life--;
+      this.playerPositions.forEach((pp, i) => {
+        if (this.distSq(pk.pos, pp) < 40 * 40) {
+          const p = this.players[i];
+          switch (pk.type) {
+            case 'HEALTH_POTION':
+              p.hp = Math.min(p.maxHp, p.hp + 50);
+              this.createExplosion(pk.pos, '#ff4444', 10, 2, 4);
+              this.addDamageNumber(pk.pos, 50, false, '+50 HP');
+              break;
+            case 'MANA_POTION':
+              p.magic = Math.min(p.maxMagic, p.magic + 40);
+              this.createExplosion(pk.pos, '#4444ff', 10, 2, 4);
+              this.addDamageNumber(pk.pos, 40, false, '+40 MP');
+              break;
+            case 'COIN_BAG':
+              this.money += 100;
+              this.createExplosion(pk.pos, '#ffd700', 12, 2, 4);
+              this.addDamageNumber(pk.pos, 100, true, '+100 GOLD');
+              break;
+            case 'SPEED_BOOST':
+              p.speed += 0.2;
+              this.createExplosion(pk.pos, '#00ff88', 10, 2, 4);
+              this.addDamageNumber(pk.pos, 0, true, '+SPEED');
+              break;
+            case 'DAMAGE_BOOST':
+              p.damage += 5;
+              this.createExplosion(pk.pos, '#ff8800', 10, 2, 4);
+              this.addDamageNumber(pk.pos, 5, true, '+5 DMG');
+              break;
+            case 'CHEST':
+              // Random reward from chest
+              const rewards = ['gold', 'hp', 'damage', 'speed'];
+              const reward = rewards[Math.floor(Math.random() * rewards.length)];
+              if (reward === 'gold') { this.money += 250; this.addDamageNumber(pk.pos, 250, true, '+250 GOLD'); }
+              else if (reward === 'hp') { p.maxHp += 25; p.hp += 25; this.addDamageNumber(pk.pos, 25, true, '+25 MAX HP'); }
+              else if (reward === 'damage') { p.damage += 8; this.addDamageNumber(pk.pos, 8, true, '+8 DMG'); }
+              else { p.speed += 0.3; this.addDamageNumber(pk.pos, 0, true, '+SPEED'); }
+              this.createExplosion(pk.pos, '#ffd700', 20, 4, 6);
+              break;
+          }
+          pk.life = 0;
+        }
+      });
+    });
+
+    this.pickups = this.pickups.filter(pk => pk.life > 0);
+  }
+
   private updateFireAreas() {
     this.fireAreas.forEach(fa => {
       fa.life--;
@@ -557,12 +1136,118 @@ export class GameEngine {
         this.playerPositions.forEach((pp, i) => {
           if (this.distSq(fa.pos, pp) < fa.radius**2) {
             this.players[i].hp -= fa.damage * 0.4;
-            if (this.players[i].hp < 1) this.players[i].hp = 1;
           }
         });
       }
     });
     this.fireAreas = this.fireAreas.filter(fa => fa.life > 0);
+  }
+
+  private updateMagicProjectiles() {
+    const newProjectiles: MagicProjectile[] = [];
+
+    for (let i = this.magicProjectiles.length - 1; i >= 0; i--) {
+      const mp = this.magicProjectiles[i];
+
+      // Homing behavior
+      if (mp.homing) {
+        let nearest: Enemy | null = null;
+        let nearestDist = mp.homingTarget ? Infinity : 400 * 400;
+
+        for (const e of this.enemies) {
+          if (mp.homingTarget && e.id === mp.homingTarget) {
+            nearest = e;
+            break;
+          }
+          const d = this.distSq(mp.pos, e.pos);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearest = e;
+          }
+        }
+
+        if (nearest) {
+          mp.homingTarget = nearest.id;
+          const targetAngle = Math.atan2(nearest.pos.y - mp.pos.y, nearest.pos.x - mp.pos.x);
+          const currentAngle = Math.atan2(mp.vel.y, mp.vel.x);
+          const speed = Math.sqrt(mp.vel.x ** 2 + mp.vel.y ** 2);
+          let angleDiff = targetAngle - currentAngle;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          const turnRate = 0.08;
+          const newAngle = currentAngle + Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), turnRate);
+          mp.vel.x = Math.cos(newAngle) * speed;
+          mp.vel.y = Math.sin(newAngle) * speed;
+        }
+      }
+
+      mp.pos.x += mp.vel.x;
+      mp.pos.y += mp.vel.y;
+      mp.life--;
+
+      let hitEnemy: Enemy | null = null;
+      for (const e of this.enemies) {
+        if (this.distSq(mp.pos, e.pos) < (mp.radius + e.radius) ** 2) {
+          hitEnemy = e;
+          e.hp -= mp.damage;
+          e.knockbackVel = { x: mp.vel.x * 0.3, y: mp.vel.y * 0.3 };
+
+          for (const el of mp.elements) {
+            if (el === MagicElement.FIRE) e.burnTimer = Math.max(e.burnTimer, 180);
+            if (el === MagicElement.ICE) e.slowTimer = Math.max(e.slowTimer, 240);
+            if (el === MagicElement.BLOOD || el === MagicElement.BLACK) e.poisonTimer = Math.max(e.poisonTimer, 150);
+          }
+
+          const color = MAGIC_ELEMENT_COLORS[mp.elements[0]] || '#cc33ff';
+          this.createExplosion(mp.pos, color, 15, 3, 5);
+          this.addDamageNumber(mp.pos, mp.damage, mp.damage > 100);
+
+          if (mp.aoe) {
+            this.enemies.forEach(ae => {
+              if (ae.id !== e.id && this.distSq(mp.pos, ae.pos) < mp.aoeRadius ** 2) {
+                ae.hp -= mp.damage * 0.5;
+                this.addDamageNumber(ae.pos, Math.floor(mp.damage * 0.5), false);
+              }
+            });
+          }
+
+          mp.pierce--;
+          if (mp.pierce < 0) {
+            // Split on hit
+            if (mp.splitCount > 0) {
+              const speed = Math.sqrt(mp.vel.x ** 2 + mp.vel.y ** 2) * 0.8;
+              const baseAngle = Math.atan2(mp.vel.y, mp.vel.x);
+              for (let s = 0; s < 3; s++) {
+                const splitAngle = baseAngle + (s - 1) * 0.6;
+                newProjectiles.push({
+                  id: this.nextId++,
+                  pos: { x: mp.pos.x, y: mp.pos.y },
+                  vel: { x: Math.cos(splitAngle) * speed, y: Math.sin(splitAngle) * speed },
+                  elements: [...mp.elements],
+                  damage: Math.floor(mp.damage * 0.5),
+                  radius: mp.radius * 0.7,
+                  life: Math.floor(mp.maxLife * 0.5),
+                  maxLife: Math.floor(mp.maxLife * 0.5),
+                  playerId: mp.playerId,
+                  pierce: 0,
+                  aoe: mp.aoe,
+                  aoeRadius: mp.aoeRadius * 0.6,
+                  modifier: 'NONE',
+                  splitCount: mp.splitCount - 1,
+                  homing: mp.homing,
+                });
+              }
+            }
+            this.magicProjectiles.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      if (mp.life <= 0) this.magicProjectiles.splice(i, 1);
+    }
+
+    this.magicProjectiles.push(...newProjectiles);
   }
 
   private updateWalls() {
@@ -815,6 +1500,116 @@ export class GameEngine {
     }
   }
 
+  private activateLimitBreak(pIdx: number) {
+    const p = this.players[pIdx], pos = this.playerPositions[pIdx];
+    // Player color determines limit break type: blue=samurai, pink=witch, green=ranger, yellow=paladin
+    const colors = ['#4af', '#f4a', '#4fa', '#fa4'];
+    const colorIdx = colors.indexOf(p.color);
+
+    // Initial burst effect
+    this.createExplosion(pos, '#ff6622', 80, 15, 25);
+    this.createExplosion(pos, '#ffaa00', 60, 10, 20);
+    this.addDamageNumber({ x: pos.x, y: pos.y - 50 }, 0, false, 'LIMIT BREAK!');
+
+    // Boost stats during limit break
+    p.damage *= 2;
+    p.speed *= 1.5;
+  }
+
+  private updateLimitBreak(pIdx: number) {
+    const p = this.players[pIdx], pos = this.playerPositions[pIdx];
+    const colors = ['#4af', '#f4a', '#4fa', '#fa4'];
+    const colorIdx = colors.indexOf(p.color);
+    const timer = p.limitBreakTimer;
+
+    // Fiery aura particles every few frames
+    if (timer % 3 === 0) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 20 + Math.random() * 20;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(angle) * dist, y: pos.y + Math.sin(angle) * dist },
+        vel: { x: Math.cos(angle) * 0.5, y: -2 - Math.random() },
+        color: timer % 6 < 3 ? '#ff4400' : '#ffaa00',
+        size: 3 + Math.random() * 4,
+        life: 30,
+        maxLife: 30
+      });
+    }
+
+    // Character-specific limit break effects
+    if (colorIdx === 0) {
+      // Samurai (blue): Teleport slashes every 20 frames
+      if (timer % 20 === 0) {
+        const nearestEnemy = this.findNearestEnemy(pos, 400);
+        if (nearestEnemy) {
+          // Teleport near enemy
+          const ang = Math.atan2(nearestEnemy.pos.y - pos.y, nearestEnemy.pos.x - pos.x);
+          const teleportDist = Math.sqrt(this.distSq(pos, nearestEnemy.pos)) - 40;
+          pos.x += Math.cos(ang) * teleportDist;
+          pos.y += Math.sin(ang) * teleportDist;
+          // Slash effect
+          this.createExplosion(pos, '#ff2200', 35, 8, 12);
+          nearestEnemy.hp -= p.damage * 1.5;
+        }
+      }
+    } else if (colorIdx === 1) {
+      // Witch (pink): Magic storm - bullets everywhere
+      if (timer % 8 === 0) {
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2 + timer * 0.1;
+          this.bullets.push({
+            id: this.nextId++, playerId: pIdx, pos: { ...pos },
+            vel: { x: Math.cos(ang) * 8, y: Math.sin(ang) * 8 },
+            damage: p.damage * 0.5, element: ElementType.MAGIC, radius: 8, life: 60, pierce: 2
+          });
+        }
+      }
+    } else if (colorIdx === 2) {
+      // Ranger (green): Rapid multi-shot
+      if (timer % 5 === 0) {
+        const aim = this.input.getAim(pIdx) || { x: 1, y: 0 };
+        const ang = Math.atan2(aim.y, aim.x);
+        for (let s = -2; s <= 2; s++) {
+          this.bullets.push({
+            id: this.nextId++, playerId: pIdx, pos: { ...pos },
+            vel: { x: Math.cos(ang + s * 0.15) * 12, y: Math.sin(ang + s * 0.15) * 12 },
+            damage: p.damage * 0.4, element: ElementType.PHYSICAL, radius: 6, life: 50, pierce: 1
+          });
+        }
+      }
+    } else {
+      // Paladin (yellow): Healing aura + damage pulse
+      if (timer % 30 === 0) {
+        p.hp = Math.min(p.maxHp, p.hp + 10);
+        this.createExplosion(pos, '#ffff44', 50, 6, 10);
+        this.enemies.forEach(e => {
+          if (this.distSq(pos, e.pos) < 200 * 200) {
+            e.hp -= p.damage * 0.8;
+          }
+        });
+      }
+    }
+
+    // End of limit break - reset stats
+    if (timer === 1) {
+      p.damage /= 2;
+      p.speed /= 1.5;
+    }
+  }
+
+  private findNearestEnemy(pos: { x: number; y: number }, maxDist: number): { pos: { x: number; y: number }; hp: number } | null {
+    let nearest = null;
+    let nearestDistSq = maxDist * maxDist;
+    for (const e of this.enemies) {
+      const d = this.distSq(pos, e.pos);
+      if (d < nearestDistSq) {
+        nearestDistSq = d;
+        nearest = e;
+      }
+    }
+    return nearest;
+  }
+
   private updateEnemies() {
     this.enemies.forEach(e => {
       // Only fully simulate enemies in range
@@ -1002,7 +1797,6 @@ export class GameEngine {
               this.playerPositions.forEach((pp, i) => {
                 if (this.distSq(e.pos, pp) < 120*120) {
                   this.players[i].hp -= 80;
-                  if (this.players[i].hp < 1) this.players[i].hp = 1;
                 }
               });
               this.enemies.forEach(other => {
@@ -1027,6 +1821,22 @@ export class GameEngine {
               this.createExplosion(e.pos, '#44cc88', 20, 4, 6);
             }
 
+            if (e.type === 'DRAGON_BOSS') {
+              const cfg = MOUNT_CONFIGS.DRAGON;
+              this.mounts.push({
+                id: this.nextId++,
+                pos: { ...e.pos },
+                type: 'DRAGON',
+                hp: cfg.hp,
+                maxHp: cfg.hp,
+                angle: e.angle,
+                alerted: false,
+                riders: []
+              });
+              this.createExplosion(e.pos, '#ff2200', 60, 8, 12);
+              this.announce('DRAGON TAMED! Mount available!', '#00ff44', 3);
+            }
+
             return false;
         }
         return true;
@@ -1044,7 +1854,7 @@ export class GameEngine {
           if (Math.random() < 0.6) {
               for (let i = -8; i <= 8; i++) {
                   const bAng = ang + i * 0.14;
-                  this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(bAng)*13, y: Math.sin(bAng)*13}, damage: 30, element: ElementType.FIRE, radius: 14, life: 110, pierce: 1 });
+                  this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(bAng)*5, y: Math.sin(bAng)*5}, damage: 30, element: ElementType.FIRE, radius: 14, life: 110, pierce: 1 });
               }
           }
           e.cooldown = 130;
@@ -1057,33 +1867,199 @@ export class GameEngine {
     const dx = target.x - e.pos.x, dy = target.y - e.pos.y, d = Math.sqrt(dx*dx+dy*dy);
     e.angle = Math.atan2(dy, dx);
     e.pos.x += (dx/d)*e.speed; e.pos.y += (dy/d)*e.speed;
+
     if (!e.fireBreathCooldown) e.fireBreathCooldown = 0;
+    if (!e.swipeCooldown) e.swipeCooldown = 0;
+    if (!e.telegraphCooldown) e.telegraphCooldown = 0;
+
     e.fireBreathCooldown--;
-    if (e.fireBreathCooldown <= 0 && d < 800) {
-      const ang = e.angle;
-      for (let i = 0; i < 12; i++) {
-        const spread = (Math.random() - 0.5) * 0.6;
-        const dist = 120 + i * 50;
-        const fPos = { x: e.pos.x + Math.cos(ang + spread) * dist, y: e.pos.y + Math.sin(ang + spread) * dist };
-        this.fireAreas.push({ id: this.nextId++, pos: fPos, radius: 60, life: 180, maxLife: 180, damage: 35, color: '#ff4400' });
+    e.swipeCooldown--;
+    e.telegraphCooldown--;
+
+    // Swipe attacks - multiple slashes around the dragon
+    if (e.swipeCooldown <= 0 && d < 250) {
+      for (let i = 0; i < 6; i++) {
+        const swipeAng = e.angle + (i * Math.PI / 3);
+        this.slashEffects.push({
+          id: this.nextId++,
+          pos: { x: e.pos.x + Math.cos(swipeAng) * 60, y: e.pos.y + Math.sin(swipeAng) * 60 },
+          angle: swipeAng + Math.PI/2,
+          life: 20,
+          maxLife: 20,
+          range: 120,
+          color: '#ff4400',
+          width: 8
+        });
       }
-      this.createExplosion(e.pos, '#ff6600', 25, 4, 8);
-      e.fireBreathCooldown = 150;
+      // Damage players in range
+      this.playerPositions.forEach((pp, i) => {
+        if (this.distSq(e.pos, pp) < 180*180) {
+          this.players[i].hp -= 40;
+          this.addDamageNumber(pp, 40, false);
+        }
+      });
+      e.swipeCooldown = 60;
     }
+
+    // Fire telegraphs - flashing circles that explode
+    if (e.telegraphCooldown <= 0) {
+      for (let i = 0; i < 5; i++) {
+        const telAng = Math.random() * Math.PI * 2;
+        const telDist = 150 + Math.random() * 350;
+        this.fireTelegraphs.push({
+          id: this.nextId++,
+          pos: { x: e.pos.x + Math.cos(telAng) * telDist, y: e.pos.y + Math.sin(telAng) * telDist },
+          radius: 70 + Math.random() * 40,
+          life: 90,
+          maxLife: 90,
+          flashRate: 8,
+          damage: 45
+        });
+      }
+      e.telegraphCooldown = 120;
+    }
+
+    // Fire breath
+    if (e.fireBreathCooldown <= 0 && d < 600) {
+      const ang = e.angle;
+      for (let i = 0; i < 10; i++) {
+        const spread = (Math.random() - 0.5) * 0.5;
+        const dist = 100 + i * 45;
+        const fPos = { x: e.pos.x + Math.cos(ang + spread) * dist, y: e.pos.y + Math.sin(ang + spread) * dist };
+        this.fireAreas.push({ id: this.nextId++, pos: fPos, radius: 50, life: 150, maxLife: 150, damage: 30, color: '#ff4400' });
+      }
+      this.createExplosion(e.pos, '#ff6600', 20, 4, 8);
+      e.fireBreathCooldown = 180;
+    }
+
+    // Bullet spray
     e.cooldown--;
     if (e.cooldown <= 0) {
-      for (let i = -5; i <= 5; i++) {
-        const bAng = e.angle + i * 0.18;
-        this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(bAng)*15, y: Math.sin(bAng)*15}, damage: 50, element: ElementType.FIRE, radius: 18, life: 100, pierce: 1 });
+      for (let i = -4; i <= 4; i++) {
+        const bAng = e.angle + i * 0.2;
+        this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(bAng)*5.5, y: Math.sin(bAng)*5.5}, damage: 35, element: ElementType.FIRE, radius: 14, life: 90, pierce: 1 });
       }
-      e.cooldown = 90;
+      e.cooldown = 100;
     }
+  }
+
+  private createSlash(pos: Vec2, angle: number, range: number, color: string) {
+    this.slashEffects.push({
+      id: this.nextId++,
+      pos: { ...pos },
+      angle,
+      life: 15,
+      maxLife: 15,
+      range,
+      color,
+      width: 6
+    });
   }
 
   private updateSpecialEnemy(e: Enemy) {
     const target = this.getNearestPlayer(e.pos);
 
     switch (e.type) {
+      case 'SHOOTER': {
+        if (!target) break;
+        const d = Math.sqrt(this.distSq(e.pos, target));
+        e.cooldown--;
+        if (e.cooldown <= 0 && d < 500) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang)*4.5, y: Math.sin(ang)*4.5}, damage: 15, element: ElementType.PHYSICAL, radius: 8, life: 80, pierce: 1 });
+          e.cooldown = 60;
+        }
+        if (d < 200) { e.pos.x -= (target.x - e.pos.x) / d * e.speed; e.pos.y -= (target.y - e.pos.y) / d * e.speed; }
+        break;
+      }
+
+      case 'GUARD':
+      case 'SENTRY': {
+        if (!target) break;
+        const d = Math.sqrt(this.distSq(e.pos, target));
+        e.cooldown--;
+        if (e.cooldown <= 0 && d < 450) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang)*4, y: Math.sin(ang)*4}, damage: 20, element: ElementType.PHYSICAL, radius: 10, life: 70, pierce: 1 });
+          e.cooldown = 90;
+        }
+        break;
+      }
+
+      case 'STALKER': {
+        if (!target) break;
+        e.cooldown--;
+        if (e.cooldown <= 0) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          for (let i = -1; i <= 1; i++) {
+            this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang + i*0.15)*5.5, y: Math.sin(ang + i*0.15)*5.5}, damage: 12, element: ElementType.PHYSICAL, radius: 7, life: 60, pierce: 1 });
+          }
+          e.cooldown = 50;
+        }
+        break;
+      }
+
+      case 'DRAGON_ENEMY': {
+        if (!target) break;
+        const d = Math.sqrt(this.distSq(e.pos, target));
+        e.cooldown--;
+        if (e.cooldown <= 0 && d < 600) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          for (let i = 0; i < 5; i++) {
+            const fPos = { x: e.pos.x + Math.cos(ang) * (80 + i * 40), y: e.pos.y + Math.sin(ang) * (80 + i * 40) };
+            this.fireAreas.push({ id: this.nextId++, pos: fPos, radius: 40, life: 120, maxLife: 120, damage: 20, color: '#ff4400' });
+          }
+          e.cooldown = 120;
+        }
+        break;
+      }
+
+      case 'HARPY': {
+        if (!target) break;
+        e.cooldown--;
+        if (e.cooldown <= 0) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang)*6, y: Math.sin(ang)*6}, damage: 10, element: ElementType.PHYSICAL, radius: 6, life: 50, pierce: 1 });
+          e.cooldown = 40;
+        }
+        break;
+      }
+
+      case 'SERPENT': {
+        if (!target) break;
+        e.cooldown--;
+        if (e.cooldown <= 0) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang)*4.5, y: Math.sin(ang)*4.5}, damage: 8, element: ElementType.POISON, radius: 10, life: 90, pierce: 1 });
+          e.cooldown = 70;
+        }
+        break;
+      }
+
+      case 'ELITE': {
+        if (!target) break;
+        e.cooldown--;
+        if (e.cooldown <= 0) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          for (let i = -2; i <= 2; i++) {
+            this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang + i*0.2)*5, y: Math.sin(ang + i*0.2)*5}, damage: 18, element: ElementType.MAGIC, radius: 10, life: 80, pierce: 1 });
+          }
+          e.cooldown = 80;
+        }
+        break;
+      }
+
+      case 'GHOST': {
+        if (!target) break;
+        e.cooldown--;
+        if (e.cooldown <= 0) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          this.bullets.push({ id: this.nextId++, playerId: -2, pos: {...e.pos}, vel: {x: Math.cos(ang)*4, y: Math.sin(ang)*4}, damage: 15, element: ElementType.MAGIC, radius: 12, life: 100, pierce: 2 });
+          e.cooldown = 100;
+        }
+        break;
+      }
+
       case 'CHARGER': {
         if (!e.chargeState) e.chargeState = 'idle';
         if (!e.chargeTimer) e.chargeTimer = 0;
@@ -1126,7 +2102,7 @@ export class GameEngine {
             const ang = e.spinAngle + (i * Math.PI / 2);
             this.bullets.push({
               id: this.nextId++, playerId: -2, pos: {...e.pos},
-              vel: { x: Math.cos(ang) * 8, y: Math.sin(ang) * 8 },
+              vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 },
               damage: 12, element: ElementType.FIRE, radius: 8, life: 80, pierce: 1
             });
           }
@@ -1197,21 +2173,149 @@ export class GameEngine {
         // Necro behavior handled in death filter
         break;
       }
+
+      case 'MAGE': {
+        if (!target) break;
+        const d = Math.sqrt(this.distSq(e.pos, target));
+        e.cooldown--;
+
+        // Cast spells at players
+        if (e.cooldown <= 0 && d < 450) {
+          const ang = Math.atan2(target.y - e.pos.y, target.x - e.pos.x);
+          const spellType = Math.random();
+
+          if (spellType < 0.4) {
+            // Magic bolt barrage
+            for (let i = -1; i <= 1; i++) {
+              this.bullets.push({
+                id: this.nextId++, playerId: -2, pos: { ...e.pos },
+                vel: { x: Math.cos(ang + i * 0.2) * 4, y: Math.sin(ang + i * 0.2) * 4 },
+                damage: e.damage, element: ElementType.MAGIC, radius: 10, life: 70, pierce: 1
+              });
+            }
+          } else if (spellType < 0.7) {
+            // Fire area attack
+            const targetPos = { x: target.x + (Math.random() - 0.5) * 60, y: target.y + (Math.random() - 0.5) * 60 };
+            this.fireAreas.push({
+              id: this.nextId++, pos: targetPos, radius: 60,
+              life: 90, maxLife: 90, damage: 20, color: '#cc33ff'
+            });
+            this.createExplosion(targetPos, '#cc33ff', 15, 3, 5);
+          } else {
+            // Lightning-style fast bolt
+            this.bullets.push({
+              id: this.nextId++, playerId: -2, pos: { ...e.pos },
+              vel: { x: Math.cos(ang) * 7, y: Math.sin(ang) * 7 },
+              damage: e.damage * 1.5, element: ElementType.LIGHTNING, radius: 8, life: 50, pierce: 2
+            });
+          }
+
+          this.createExplosion(e.pos, '#cc33ff', 8, 2, 4);
+          e.cooldown = 120;
+        }
+
+        // Keep distance but stay in range
+        if (d < 200) {
+          e.pos.x -= (target.x - e.pos.x) / d * e.speed * 1.2;
+          e.pos.y -= (target.y - e.pos.y) / d * e.speed * 1.2;
+        } else if (d > 350) {
+          e.pos.x += (target.x - e.pos.x) / d * e.speed * 0.8;
+          e.pos.y += (target.y - e.pos.y) / d * e.speed * 0.8;
+        }
+        break;
+      }
     }
   }
 
   private updateAttacks() {
     this.bullets.forEach(b => {
       b.pos.x += b.vel.x; b.pos.y += b.vel.y; b.life--;
-      this.enemies.forEach(e => {
-        if (this.distSq(b.pos, e.pos) < (b.radius + e.radius)**2) {
-          e.hp -= b.damage; e.isAggressive = true;
-          this.addDamageNumber(e.pos, b.damage, false);
-          b.life = 0;
+      // Player, tower, and ally bullets hit enemies
+      if (b.playerId >= 0 || b.playerId === -1 || b.playerId === -3) {
+        this.enemies.forEach(e => {
+          if (this.distSq(b.pos, e.pos) < (b.radius + e.radius)**2) {
+            e.hp -= b.damage; e.isAggressive = true;
+            this.addDamageNumber(e.pos, b.damage, false);
+            b.life = 0;
+          }
+        });
+      }
+      // Enemy bullets hit players and allies
+      if (b.playerId === -2) {
+        this.playerPositions.forEach((pp, i) => {
+          if (!this.players[i].isDead && this.distSq(b.pos, pp) < (b.radius + PLAYER_RADIUS)**2) {
+            this.players[i].hp -= b.damage;
+            this.addDamageNumber(pp, b.damage, false);
+            b.life = 0;
+          }
+        });
+        this.allies.forEach(a => {
+          if (this.distSq(b.pos, a.pos) < (b.radius + 15)**2) {
+            a.hp -= b.damage;
+            this.addDamageNumber(a.pos, b.damage, false);
+            b.life = 0;
+          }
+        });
+      }
+    });
+    this.bullets = this.bullets.filter(b => b.life > 0);
+
+    // Melee enemy contact damage with slash effects
+    const meleeTypes = ['SWARM', 'TANK', 'STALKER', 'WOLF', 'CHARGER', 'SERPENT'];
+    this.enemies.forEach(e => {
+      if (!e.isAggressive || !meleeTypes.includes(e.type)) return;
+      this.playerPositions.forEach((pp, i) => {
+        if (this.players[i].isDead) return;
+        const d = Math.sqrt(this.distSq(e.pos, pp));
+        if (d < e.radius + PLAYER_RADIUS + 10) {
+          if (e.cooldown <= 0 || e.type === 'CHARGER') {
+            this.players[i].hp -= e.damage;
+            this.addDamageNumber(pp, e.damage, false);
+            // Slash effect
+            const slashAng = Math.atan2(pp.y - e.pos.y, pp.x - e.pos.x);
+            this.createSlash(
+              { x: (e.pos.x + pp.x) / 2, y: (e.pos.y + pp.y) / 2 },
+              slashAng + (Math.random() - 0.5) * 0.5,
+              40 + e.radius,
+              e.type === 'WOLF' ? '#664422' : e.type === 'CHARGER' ? '#cc4444' : '#ff6644'
+            );
+            if (e.type !== 'CHARGER') e.cooldown = 30;
+          }
         }
       });
     });
-    this.bullets = this.bullets.filter(b => b.life > 0);
+  }
+
+  private updateSlashEffects() {
+    this.slashEffects.forEach(s => s.life--);
+    this.slashEffects = this.slashEffects.filter(s => s.life > 0);
+  }
+
+  private updateFireTelegraphs() {
+    this.fireTelegraphs.forEach(ft => {
+      ft.life--;
+      if (ft.life <= 0) {
+        // Explode into fire area
+        this.fireAreas.push({
+          id: this.nextId++,
+          pos: { ...ft.pos },
+          radius: ft.radius,
+          life: 60,
+          maxLife: 60,
+          damage: ft.damage,
+          color: '#ff4400'
+        });
+        this.createExplosion(ft.pos, '#ff6600', 20, 4, 8);
+        // Damage players in blast
+        this.playerPositions.forEach((pp, i) => {
+          if (this.distSq(ft.pos, pp) < ft.radius * ft.radius) {
+            this.players[i].hp -= ft.damage;
+            this.addDamageNumber(pp, ft.damage, false);
+          }
+        });
+      }
+    });
+    this.fireTelegraphs = this.fireTelegraphs.filter(ft => ft.life > 0);
   }
 
   private spawnCoin(pos: Vec2) {
@@ -1331,9 +2435,7 @@ export class GameEngine {
   }
 
   private getNearestEnemy(pos: Vec2, range: number): Enemy | null {
-    let best = null, minDist = range*range;
-    this.enemies.forEach(e => { const d = this.distSq(pos, e.pos); if (d < minDist) { minDist = d; best = e; } });
-    return best;
+    return this.enemySpatialHash.getNearest(pos.x, pos.y, range);
   }
 
   private getNearestPlayer(pos: Vec2): Vec2 | null {
@@ -1355,15 +2457,20 @@ export class GameEngine {
       if (this.money < price) return;
       const p = this.players[playerIdx], item = SHOP_ITEMS.find(i => i.id === itemId);
       if (!item) return;
+      // Utility items can be rebought (consumables, builds)
       if (itemId === 'upgrade_town') { this.money -= price; this.town.level++; this.town.goldGeneration += 60; return; }
       if (itemId === 'build_wall') { this.money -= price; this.buildMode = 'WALL_STRAIGHT'; this.state = GameState.PLAYING; return; }
       if (itemId === 'build_corner') { this.money -= price; this.buildMode = 'WALL_CORNER'; this.state = GameState.PLAYING; return; }
       if (itemId === 'build_gate') { this.money -= price; this.buildMode = 'WALL_GATE'; this.state = GameState.PLAYING; return; }
       if (itemId === 'build_tower') { this.money -= price; this.buildMode = 'TOWER'; this.state = GameState.PLAYING; return; }
-      const slotMap = { WEAPON: p.weaponSlots, ARMOR: p.armorSlots, MAGIC: p.magicSlots, UTILITY: null };
+      if (item.category === 'UTILITY') { this.money -= price; return; }
+      const slotMap = { WEAPON: p.weaponSlots, ARMOR: p.armorSlots, MAGIC: p.magicSlots, SPELL: p.magicSlots };
       const slots = slotMap[item.category as keyof typeof slotMap];
-      if (slots && slots.length >= MAX_SLOTS) return;
-      this.money -= price; if (slots) slots.push(itemId);
+      if (!slots) return;
+      if (slots.includes(itemId)) return; // No duplicates
+      if (slots.length >= MAX_SLOTS) return;
+      this.money -= price;
+      slots.push(itemId);
       if (item.mods.dmg) p.damage += item.mods.dmg;
       if (item.mods.hp) { p.maxHp += item.mods.hp; p.hp += item.mods.hp; }
       if (item.mods.spd) p.speed += item.mods.spd;
@@ -1441,6 +2548,363 @@ export class GameEngine {
   public toggleGate(pos: Vec2) {
     const wall = this.getWallAt(pos, 20);
     if (wall && wall.type === 'WALL_GATE') wall.isOpen = !wall.isOpen;
+  }
+
+  private updateFactionCastles() {
+    const cfg = FACTION_CASTLE_CONFIG;
+
+    this.factionCastles.forEach(castle => {
+      if (!this.isInSimRange(castle.pos, 1500)) return;
+
+      castle.spawnCooldown--;
+
+      // Red castles spawn enemy mage groups and occasionally trigger sieges
+      if (castle.faction === Faction.RED && !castle.siegeActive) {
+        // Spawn enemy mages periodically
+        if (castle.spawnCooldown <= 0 && this.enemies.length < 150) {
+          this.spawnMageGroup(castle.pos, Faction.RED, castle.level);
+          castle.spawnCooldown = cfg.spawnInterval * (0.8 + Math.random() * 0.4);
+        }
+
+        // Random chance to start siege (enemy attacks player)
+        if (this.wave >= 3 && Math.random() < 0.0003 * castle.level) {
+          this.startSiege(castle, true);
+        }
+      }
+
+      // Blue castles spawn ally units
+      if (castle.faction === Faction.BLUE && !castle.siegeActive) {
+        if (castle.spawnCooldown <= 0 && this.allies.length < 20) {
+          this.spawnAllyFromCastle(castle);
+          castle.spawnCooldown = cfg.spawnInterval * 1.5;
+        }
+      }
+
+      // Handle active sieges
+      if (castle.siegeActive) {
+        this.updateSiege(castle);
+      }
+
+      // Check for player-initiated siege on red castles
+      if (castle.faction === Faction.RED && !castle.siegeActive) {
+        const playerNear = this.playerPositions.some((pp, i) =>
+          !this.players[i].isDead && this.distSq(pp, castle.pos) < cfg.captureRadius * cfg.captureRadius
+        );
+        if (playerNear && this.frameCount % 300 === 0 && Math.random() < 0.3) {
+          this.startSiege(castle, false);
+        }
+      }
+    });
+  }
+
+  private startSiege(castle: FactionCastle, enemyAttacks: boolean) {
+    const cfg = FACTION_CASTLE_CONFIG;
+    castle.siegeActive = true;
+    castle.siegeWave = 1;
+    castle.siegeEnemiesRemaining = cfg.enemiesPerWave * castle.level;
+
+    this.events.push({
+      id: this.nextId++,
+      type: 'SIEGE',
+      startTime: 120,
+      duration: 0,
+      warningTime: 90,
+      intensity: castle.level,
+      pos: { ...castle.pos },
+      active: true,
+      announced: false,
+      castleId: castle.id,
+      waveNum: 1,
+      totalWaves: cfg.siegeWaves,
+      enemiesRemaining: castle.siegeEnemiesRemaining
+    });
+
+    this.announce('SIEGE!', enemyAttacks ? '#ff4444' : '#ffaa00', 3);
+  }
+
+  private updateSiege(castle: FactionCastle) {
+    const cfg = FACTION_CASTLE_CONFIG;
+
+    // Spawn siege enemies/defenders from castle
+    if (castle.siegeEnemiesRemaining > 0 && this.frameCount % 45 === 0) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 100 + Math.random() * 150;
+      const spawnPos = {
+        x: castle.pos.x + Math.cos(ang) * dist,
+        y: castle.pos.y + Math.sin(ang) * dist
+      };
+
+      if (castle.faction === Faction.RED) {
+        this.spawnSiegeEnemy(spawnPos, castle.level);
+      }
+      castle.siegeEnemiesRemaining--;
+    }
+
+    // Check siege completion
+    if (castle.siegeEnemiesRemaining <= 0) {
+      const siegeEnemiesAlive = this.enemies.filter(e =>
+        e.faction === castle.faction && this.distSq(e.pos, castle.pos) < 800 * 800
+      ).length;
+
+      if (siegeEnemiesAlive === 0) {
+        if (castle.siegeWave < cfg.siegeWaves) {
+          castle.siegeWave++;
+          castle.siegeEnemiesRemaining = cfg.enemiesPerWave * castle.level;
+          this.announce(`WAVE ${castle.siegeWave}/${cfg.siegeWaves}`, '#ffaa00', 2);
+        } else {
+          // Siege complete - capture castle
+          castle.siegeActive = false;
+          if (castle.faction === Faction.RED) {
+            castle.faction = Faction.BLUE;
+            castle.hp = castle.maxHp;
+            this.announce('CASTLE CAPTURED!', '#4d99ff', 3);
+            this.createExplosion(castle.pos, '#4d99ff', 50, 6, 10);
+            // Spawn victory allies
+            for (let i = 0; i < 3; i++) {
+              this.spawnAllyFromCastle(castle);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private spawnMageGroup(pos: Vec2, faction: Faction, level: number) {
+    const groupSize = 2 + Math.floor(Math.random() * 3) + level;
+    const colors = faction === Faction.RED
+      ? ['#ff4444', '#dc143c', '#ff6347', '#b22222']
+      : ['#4d99ff', '#00bfff', '#1e90ff', '#20b2aa'];
+
+    for (let i = 0; i < groupSize; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 80 + Math.random() * 120;
+      const spawnPos = { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist };
+      const isMage = i === 0 || Math.random() < 0.3;
+      const t = isMage ? 'MAGE' : (Math.random() < 0.5 ? 'SHOOTER' : 'STALKER');
+      const config = ENEMY_TYPES[t];
+
+      this.enemies.push({
+        id: this.nextId++,
+        pos: spawnPos,
+        hp: Math.floor(config.hp * (1 + level * 0.2)),
+        maxHp: Math.floor(config.hp * (1 + level * 0.2)),
+        speed: config.speed,
+        radius: config.radius,
+        damage: Math.floor(config.damage * (1 + level * 0.15)),
+        type: t as any,
+        movement: config.movement as any,
+        cooldown: 0,
+        knockbackVel: { x: 0, y: 0 },
+        slowTimer: 0,
+        burnTimer: 0,
+        poisonTimer: 0,
+        isAggressive: true,
+        angle: Math.random() * Math.PI * 2,
+        visionCone: 0,
+        visionRange: 0,
+        faction
+      });
+    }
+  }
+
+  private spawnSiegeEnemy(pos: Vec2, level: number) {
+    const types: (keyof typeof ENEMY_TYPES)[] = ['MAGE', 'SHOOTER', 'TANK', 'CHARGER', 'ELITE'];
+    const t = types[Math.floor(Math.random() * types.length)];
+    const config = ENEMY_TYPES[t];
+
+    this.enemies.push({
+      id: this.nextId++,
+      pos: { ...pos },
+      hp: Math.floor(config.hp * (1.2 + level * 0.3)),
+      maxHp: Math.floor(config.hp * (1.2 + level * 0.3)),
+      speed: config.speed * 1.1,
+      radius: config.radius,
+      damage: Math.floor(config.damage * (1.1 + level * 0.2)),
+      type: t as any,
+      movement: 'CHASE',
+      cooldown: 0,
+      knockbackVel: { x: 0, y: 0 },
+      slowTimer: 0,
+      burnTimer: 0,
+      poisonTimer: 0,
+      isAggressive: true,
+      angle: Math.random() * Math.PI * 2,
+      visionCone: 0,
+      visionRange: 0,
+      faction: Faction.RED
+    });
+  }
+
+  private spawnAllyFromCastle(castle: FactionCastle) {
+    const types: (keyof typeof ALLY_CONFIGS)[] = ['SOLDIER', 'ARCHER', 'MAGE', 'KNIGHT'];
+    const t = types[Math.floor(Math.random() * types.length)];
+    const config = ALLY_CONFIGS[t];
+
+    const ang = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * 100;
+    const pos = {
+      x: castle.pos.x + Math.cos(ang) * dist,
+      y: castle.pos.y + Math.sin(ang) * dist
+    };
+
+    this.allies.push({
+      id: this.nextId++,
+      pos,
+      hp: config.hp,
+      maxHp: config.hp,
+      speed: config.speed,
+      damage: config.damage,
+      type: t,
+      cooldown: 0,
+      targetId: null,
+      followPlayerId: null,
+      behavior: 'WANDER',
+      angle: ang,
+      color: config.color
+    });
+
+    this.createExplosion(pos, config.color, 10, 2, 4);
+  }
+
+  private updateAllies() {
+    this.allies.forEach(ally => {
+      if (!this.isInSimRange(ally.pos, 800)) return;
+
+      ally.cooldown--;
+      const cfg = ALLY_CONFIGS[ally.type];
+
+      // Find nearest player to potentially follow
+      let nearestPlayer: { idx: number; dist: number } | null = null;
+      this.playerPositions.forEach((pp, i) => {
+        if (this.players[i].isDead) return;
+        const d = Math.sqrt(this.distSq(ally.pos, pp));
+        if (d < 400 && (!nearestPlayer || d < nearestPlayer.dist)) {
+          nearestPlayer = { idx: i, dist: d };
+        }
+      });
+
+      // Decide behavior
+      if (nearestPlayer && nearestPlayer.dist < 200) {
+        ally.behavior = 'FOLLOW';
+        ally.followPlayerId = nearestPlayer.idx;
+      } else if (ally.followPlayerId !== null) {
+        const followPos = this.playerPositions[ally.followPlayerId];
+        if (followPos && this.distSq(ally.pos, followPos) > 600 * 600) {
+          ally.behavior = 'WANDER';
+          ally.followPlayerId = null;
+        }
+      }
+
+      // Find target enemy
+      let targetEnemy: Enemy | null = null;
+      let minEnemyDist = cfg.attackRange * cfg.attackRange;
+      this.enemies.forEach(e => {
+        if (!e.isAggressive) return;
+        const d = this.distSq(ally.pos, e.pos);
+        if (d < minEnemyDist) {
+          minEnemyDist = d;
+          targetEnemy = e;
+        }
+      });
+
+      // Combat behavior
+      if (targetEnemy) {
+        ally.behavior = 'ATTACK';
+        ally.targetId = targetEnemy.id;
+        const dx = targetEnemy.pos.x - ally.pos.x;
+        const dy = targetEnemy.pos.y - ally.pos.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        ally.angle = Math.atan2(dy, dx);
+
+        // Attack
+        if (ally.cooldown <= 0 && d < cfg.attackRange) {
+          if (ally.type === 'ARCHER' || ally.type === 'MAGE') {
+            // Ranged attack
+            this.bullets.push({
+              id: this.nextId++,
+              playerId: -3, // ally bullet
+              pos: { ...ally.pos },
+              vel: { x: Math.cos(ally.angle) * 12, y: Math.sin(ally.angle) * 12 },
+              damage: ally.damage,
+              element: ally.type === 'MAGE' ? ElementType.MAGIC : ElementType.PHYSICAL,
+              radius: ally.type === 'MAGE' ? 10 : 6,
+              life: 60,
+              pierce: 1
+            });
+            this.createExplosion(ally.pos, ally.color, 5, 1, 3);
+          } else {
+            // Melee attack
+            targetEnemy.hp -= ally.damage;
+            this.addDamageNumber(targetEnemy.pos, ally.damage, false);
+            this.createSlash(
+              { x: (ally.pos.x + targetEnemy.pos.x) / 2, y: (ally.pos.y + targetEnemy.pos.y) / 2 },
+              ally.angle, 30, ally.color
+            );
+          }
+          ally.cooldown = cfg.attackCooldown;
+        }
+
+        // Move toward or away based on type
+        if (ally.type === 'ARCHER' || ally.type === 'MAGE') {
+          if (d < 150) {
+            ally.pos.x -= (dx / d) * ally.speed;
+            ally.pos.y -= (dy / d) * ally.speed;
+          } else if (d > cfg.attackRange * 0.8) {
+            ally.pos.x += (dx / d) * ally.speed;
+            ally.pos.y += (dy / d) * ally.speed;
+          }
+        } else {
+          ally.pos.x += (dx / d) * ally.speed;
+          ally.pos.y += (dy / d) * ally.speed;
+        }
+      } else if (ally.behavior === 'FOLLOW' && ally.followPlayerId !== null) {
+        // Follow player
+        const target = this.playerPositions[ally.followPlayerId];
+        if (target) {
+          const dx = target.x - ally.pos.x;
+          const dy = target.y - ally.pos.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > 80) {
+            ally.pos.x += (dx / d) * ally.speed;
+            ally.pos.y += (dy / d) * ally.speed;
+            ally.angle = Math.atan2(dy, dx);
+          }
+        }
+      } else {
+        // Wander
+        if (this.frameCount % 120 === 0) {
+          ally.angle += (Math.random() - 0.5) * 1.5;
+        }
+        ally.pos.x += Math.cos(ally.angle) * ally.speed * 0.3;
+        ally.pos.y += Math.sin(ally.angle) * ally.speed * 0.3;
+      }
+
+      // Clamp position
+      ally.pos.x = Math.max(50, Math.min(WORLD_WIDTH - 50, ally.pos.x));
+      ally.pos.y = Math.max(50, Math.min(WORLD_HEIGHT - 50, ally.pos.y));
+    });
+
+    // Handle ally damage from enemies and filter dead allies
+    this.allies.forEach(ally => {
+      this.enemies.forEach(e => {
+        if (!e.isAggressive) return;
+        if (this.distSq(ally.pos, e.pos) < (20 + e.radius) ** 2) {
+          if (e.cooldown <= 0) {
+            ally.hp -= e.damage;
+            this.addDamageNumber(ally.pos, e.damage, false);
+            e.cooldown = 45;
+          }
+        }
+      });
+    });
+
+    this.allies = this.allies.filter(a => {
+      if (a.hp <= 0) {
+        this.createExplosion(a.pos, a.color, 15, 3, 5);
+        return false;
+      }
+      return true;
+    });
   }
 
   private updateEvents() {
@@ -1592,12 +3056,24 @@ export class GameEngine {
       bullets: this.bullets, enemies: this.enemies, particles: this.particles,
       damageNumbers: this.damageNumbers, coins: this.coins, mounts: this.mounts,
       traders: this.traders, fireAreas: this.fireAreas, walls: this.walls, towers: this.towers,
+      slashEffects: this.slashEffects, fireTelegraphs: this.fireTelegraphs,
+      pickups: this.pickups,
       score: this.score, money: this.money, state: this.state, wave: this.wave,
       camera: this.camera, world: this.world, town: this.town,
       buildMode: this.buildMode, buildRotation: this.buildRotation,
       events: this.events, announcements: this.announcements,
-      campfires: this.campfires, towns: this.world.getTowns(),
-      playerCityHealCooldowns: this.playerCityHealCooldowns
+      campfires: this.campfires, torches: this.torches, towns: this.world.getTowns(),
+      playerCityHealCooldowns: this.playerCityHealCooldowns,
+      magicWheels: this.magicWheels.map(w => w.getState()),
+      magicProjectiles: this.magicProjectiles,
+      factionCastles: this.factionCastles,
+      allies: this.allies
     };
+  }
+
+  public getMagicWheelInfo(playerIndex: number): { manaCost: number; comboName: string | null } {
+    const wheel = this.magicWheels[playerIndex];
+    if (!wheel) return { manaCost: 0, comboName: null };
+    return { manaCost: wheel.calculateManaCost(), comboName: wheel.getComboName() };
   }
 }

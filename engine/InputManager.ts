@@ -2,10 +2,45 @@
 export class InputManager {
   private keys: Set<string> = new Set();
   private uiNavCooldown: number = 0;
+  private prevButtonStates: Map<number, boolean[]> = new Map();
+  private controllerCallbacks: { connected: ((idx: number) => void)[]; disconnected: ((idx: number) => void)[] } = { connected: [], disconnected: [] };
 
   constructor() {
     window.addEventListener('keydown', (e) => this.keys.add(e.code));
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('gamepadconnected', (e) => {
+      this.controllerCallbacks.connected.forEach(cb => cb((e as GamepadEvent).gamepad.index));
+    });
+    window.addEventListener('gamepaddisconnected', (e) => {
+      this.controllerCallbacks.disconnected.forEach(cb => cb((e as GamepadEvent).gamepad.index));
+    });
+  }
+
+  public onControllerConnected(callback: (index: number) => void): void {
+    this.controllerCallbacks.connected.push(callback);
+  }
+
+  public onControllerDisconnected(callback: (index: number) => void): void {
+    this.controllerCallbacks.disconnected.push(callback);
+  }
+
+  public wasButtonJustPressed(controllerIndex: number, buttonIndex: number): boolean {
+    const gp = navigator.getGamepads()[controllerIndex];
+    if (!gp) return false;
+    const prev = this.prevButtonStates.get(controllerIndex);
+    const wasPressed = prev ? prev[buttonIndex] : false;
+    const isPressed = gp.buttons[buttonIndex]?.pressed ?? false;
+    return isPressed && !wasPressed;
+  }
+
+  public updatePrevButtonStates(): void {
+    const gamepads = navigator.getGamepads();
+    for (let i = 0; i < 4; i++) {
+      const gp = gamepads[i];
+      if (gp) {
+        this.prevButtonStates.set(i, gp.buttons.map(b => b.pressed));
+      }
+    }
   }
 
   public hasController(): boolean {
@@ -123,7 +158,7 @@ export class InputManager {
     if (playerIndex === 0 && this.keys.has('Space')) return true;
     if (playerIndex === 1 && this.keys.has('ControlRight')) return true;
     const gp = navigator.getGamepads()[playerIndex];
-    if (gp) return gp.buttons[0].pressed; // A
+    if (gp) return gp.buttons[0].pressed || gp.buttons[10].pressed; // A or L3
     return false;
   }
 
@@ -131,7 +166,7 @@ export class InputManager {
     if (playerIndex === 0 && this.keys.has('ShiftLeft')) return true;
     if (playerIndex === 1 && this.keys.has('ShiftRight')) return true;
     const gp = navigator.getGamepads()[playerIndex];
-    if (gp) return gp.buttons[6].pressed; // L2
+    if (gp) return gp.buttons[6].pressed || gp.buttons[1].pressed; // LT or B
     return false;
   }
 
@@ -155,7 +190,8 @@ export class InputManager {
     if (playerIndex === 0 && this.keys.has('KeyQ')) return true;
     if (playerIndex === 1 && this.keys.has('Numpad0')) return true;
     const gp = navigator.getGamepads()[playerIndex];
-    if (gp) return gp.buttons[10].pressed || gp.buttons[11].pressed; // L3/R3
+    // L3+R3 together (both stick clicks)
+    if (gp) return gp.buttons[10].pressed && gp.buttons[11].pressed;
     return false;
   }
 
@@ -167,10 +203,11 @@ export class InputManager {
     if (this.keys.has(keys[playerIndex][skillIndex])) return true;
     const gp = navigator.getGamepads()[playerIndex];
     if (gp) {
-        if (skillIndex === 0) return gp.buttons[2].pressed; // X / Square
-        if (skillIndex === 1) return gp.buttons[3].pressed; // Y / Triangle
-        if (skillIndex === 2) return gp.buttons[1].pressed; // B / Circle
-        if (skillIndex === 3) return gp.buttons[0].pressed; // A / Cross
+        // Face buttons AND triggers/bumpers for dual controller layout
+        if (skillIndex === 0) return gp.buttons[2].pressed || gp.buttons[4].pressed; // X + LB
+        if (skillIndex === 1) return gp.buttons[3].pressed || gp.buttons[5].pressed; // Y + RB
+        if (skillIndex === 2) return gp.buttons[1].pressed || gp.buttons[6].pressed; // B + LT
+        if (skillIndex === 3) return gp.buttons[0].pressed || gp.buttons[7].pressed; // A + RT
     }
     return false;
   }
@@ -199,5 +236,78 @@ export class InputManager {
     const gp = navigator.getGamepads()[playerIndex];
     if (gp) return gp.buttons[1].pressed;
     return false;
+  }
+
+  // Magic Wheel Controls
+  public isWheelOpenPressed(playerIndex: number): boolean {
+    // LB or Tab to open wheel
+    if (playerIndex === 0 && this.keys.has('Tab')) return true;
+    if (playerIndex === 1 && this.keys.has('Backslash')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[4].pressed; // LB
+    return false;
+  }
+
+  public isWheelSelectPressed(playerIndex: number): boolean {
+    // RT or click to select element
+    if (playerIndex === 0 && this.keys.has('KeyE')) return true;
+    if (playerIndex === 1 && this.keys.has('Slash')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[7].pressed; // RT
+    return false;
+  }
+
+  public isWheelCastPressed(playerIndex: number): boolean {
+    // RB or Space to cast
+    if (playerIndex === 0 && this.keys.has('Space')) return true;
+    if (playerIndex === 1 && this.keys.has('Enter')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[5].pressed; // RB
+    return false;
+  }
+
+  public isWheelClearPressed(playerIndex: number): boolean {
+    // B or Backspace to clear stack
+    if (playerIndex === 0 && this.keys.has('Backspace')) return true;
+    if (playerIndex === 1 && this.keys.has('Delete')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[1].pressed; // B
+    return false;
+  }
+
+  public isWheelModePressed(playerIndex: number): boolean {
+    // Y or G to cycle cast mode
+    if (playerIndex === 0 && this.keys.has('KeyG')) return true;
+    if (playerIndex === 1 && this.keys.has('NumpadAdd')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[3].pressed; // Y
+    return false;
+  }
+
+  public isModifierCyclePressed(playerIndex: number): boolean {
+    // X or DPad-Right to cycle modifier
+    if (playerIndex === 0 && this.keys.has('KeyX')) return true;
+    if (playerIndex === 1 && this.keys.has('NumpadMultiply')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[15].pressed; // DPad Right
+    return false;
+  }
+
+  public getRightStick(playerIndex: number): { x: number; y: number } {
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) {
+      const rx = gp.axes[2] || 0;
+      const ry = gp.axes[3] || 0;
+      return { x: rx, y: ry };
+    }
+    // Keyboard fallback: numpad or IJKL for player 0/1
+    let x = 0, y = 0;
+    if (playerIndex === 0) {
+      if (this.keys.has('KeyI')) y -= 1;
+      if (this.keys.has('KeyK')) y += 1;
+      if (this.keys.has('KeyJ')) x -= 1;
+      if (this.keys.has('KeyL')) x += 1;
+    }
+    return { x, y };
   }
 }

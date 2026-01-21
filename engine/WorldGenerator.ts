@@ -1,5 +1,5 @@
 
-import { Biome, Vec2, TownState, CityStyle, Campfire } from '../types';
+import { Biome, Vec2, TownState, CityStyle, Campfire, Torch } from '../types';
 import { WORLD_WIDTH, WORLD_HEIGHT, TOWN_RADIUS } from '../constants';
 import { TerrainTile, TerrainFeature, generateTileFeatures, getEdgeCode, getTileVariant, BIOME_FEATURES } from './TerrainTiles';
 
@@ -92,6 +92,7 @@ export class WorldGenerator {
   private rows: number;
   public towns: Town[] = [];
   public campfires: Campfire[] = [];
+  public torches: Torch[] = [];
   private riverMap: Set<number> = new Set();
   private nextId: number = 0;
 
@@ -151,6 +152,9 @@ export class WorldGenerator {
 
     // Place campfires throughout the world
     this.placeCampfires();
+
+    // Place torches around town entrances
+    this.placeTorches();
   }
 
   private placeTowns() {
@@ -385,7 +389,14 @@ export class WorldGenerator {
       const y = 500 + Math.random() * (WORLD_HEIGHT - 1000);
       const biome = this.getBiomeAt(x, y);
       if (biome === 'SHORE') {
-        positions.push({ x, y });
+        const adjacentToSea =
+          this.getBiomeAt(x - this.gridSize, y) === 'SEA' ||
+          this.getBiomeAt(x + this.gridSize, y) === 'SEA' ||
+          this.getBiomeAt(x, y - this.gridSize) === 'SEA' ||
+          this.getBiomeAt(x, y + this.gridSize) === 'SEA';
+        if (adjacentToSea) {
+          positions.push({ x, y });
+        }
       }
       attempts++;
     }
@@ -398,7 +409,7 @@ export class WorldGenerator {
   }
 
   private placeCampfires() {
-    const numCampfires = 40;
+    const numCampfires = 15;
     for (let i = 0; i < numCampfires; i++) {
       const pos = this.getSpawnablePosition();
       const biome = this.getBiomeAt(pos.x, pos.y);
@@ -415,31 +426,43 @@ export class WorldGenerator {
     return this.campfires;
   }
 
-  // Get full tile data with neighbors, edge code, and features
+  private placeTorches() {
+    // Place torches around each town's perimeter (gates/entrances)
+    for (const town of this.towns) {
+      const numTorches = 8;
+      for (let i = 0; i < numTorches; i++) {
+        const angle = (i / numTorches) * Math.PI * 2;
+        const dist = town.radius - 20;
+        this.torches.push({
+          id: this.nextId++,
+          pos: {
+            x: town.pos.x + Math.cos(angle) * dist,
+            y: town.pos.y + Math.sin(angle) * dist
+          },
+          flicker: Math.random()
+        });
+      }
+    }
+  }
+
+  public getTorches(): Torch[] {
+    return this.torches;
+  }
+
+  // Fast biome-only lookup for rendering (no features/neighbors)
+  public getBiomeAtFast(worldX: number, worldY: number): Biome {
+    return this.getBiomeAt(worldX, worldY);
+  }
+
+  // Get full tile data with neighbors, edge code, and features (expensive - avoid in hot path)
   public getTileAt(worldX: number, worldY: number): TerrainTile {
-    const tileX = Math.floor(worldX / this.gridSize);
-    const tileY = Math.floor(worldY / this.gridSize);
     const biome = this.getBiomeAt(worldX, worldY);
-
-    // Get neighbor biomes
-    const n = this.getBiomeAt(worldX, worldY - this.gridSize);
-    const e = this.getBiomeAt(worldX + this.gridSize, worldY);
-    const s = this.getBiomeAt(worldX, worldY + this.gridSize);
-    const w = this.getBiomeAt(worldX - this.gridSize, worldY);
-
-    // Calculate edge code (which edges border different biomes)
-    const edgeCode = getEdgeCode(n !== biome, e !== biome, s !== biome, w !== biome);
-    const variant = getTileVariant(tileX, tileY, 4);
-
-    // Generate features for this tile
-    const features = generateTileFeatures(biome, tileX, tileY, this.gridSize, this.seed);
-
     return {
       biome,
-      edgeCode,
-      variant,
-      features,
-      neighbors: { n, e, s, w }
+      edgeCode: 0,
+      variant: 0,
+      features: [],
+      neighbors: { n: biome, e: biome, s: biome, w: biome }
     };
   }
 

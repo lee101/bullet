@@ -1,5 +1,15 @@
 
-export type MusicCategory = 'menu' | 'battle' | 'town' | 'boss' | 'explore';
+export type MusicCategory = 'menu' | 'battle' | 'town' | 'boss' | 'explore' | 'dragon' | 'siege' | 'victory';
+
+export type SfxCategory =
+  | 'slash' | 'hit' | 'death'
+  | 'fire' | 'ice' | 'lightning' | 'poison' | 'heal' | 'dark'
+  | 'dragonRoar' | 'dragonBreath'
+  | 'dash' | 'teleport' | 'powerup' | 'levelup'
+  | 'explosion' | 'fireball'
+  | 'horn' | 'fanfare'
+  | 'coin' | 'pickup' | 'error'
+  | 'mount' | 'dismount';
 
 interface TrackInfo {
   path: string;
@@ -7,11 +17,18 @@ interface TrackInfo {
   source?: MediaElementAudioSourceNode;
 }
 
+interface SfxPool {
+  sounds: HTMLAudioElement[];
+  index: number;
+}
+
 export class AudioManager {
   private tracksByCategory: Map<MusicCategory, TrackInfo[]> = new Map();
+  private sfxPools: Map<SfxCategory, SfxPool> = new Map();
   private currentCategory: MusicCategory | null = null;
   private currentTrackIndex: number = 0;
   private masterVolume: number = 0.5;
+  private sfxVolume: number = 0.6;
   private crossfadeInterval: ReturnType<typeof setInterval> | null = null;
 
   // Web Audio API for procedural effects
@@ -34,6 +51,7 @@ export class AudioManager {
 
   constructor() {
     this.loadTracks();
+    this.loadSfx();
   }
 
   private initAudioContext() {
@@ -106,7 +124,10 @@ export class AudioManager {
       battle: ['/music/battle.mp3', '/music/battle2.mp3', '/music/battle3.mp3'],
       town: ['/music/town.mp3', '/music/town2.mp3'],
       boss: ['/music/boss.mp3', '/music/boss2.mp3'],
-      explore: ['/music/explore.mp3', '/music/explore2.mp3']
+      explore: ['/music/explore.mp3', '/music/explore2.mp3'],
+      dragon: ['/music/dragon.mp3', '/music/dragon2.mp3'],
+      siege: ['/music/siege.mp3', '/music/siege2.mp3'],
+      victory: ['/music/victory.mp3']
     };
 
     Object.entries(trackFiles).forEach(([category, paths]) => {
@@ -120,6 +141,100 @@ export class AudioManager {
       });
       this.tracksByCategory.set(category as MusicCategory, tracks);
     });
+  }
+
+  private loadSfx() {
+    const sfxFiles: Record<SfxCategory, string[]> = {
+      // Combat
+      slash: ['/sfx/slash1.mp3', '/sfx/slash2.mp3', '/sfx/slash3.mp3'],
+      hit: ['/sfx/hit1.mp3', '/sfx/hit2.mp3'],
+      death: ['/sfx/death1.mp3', '/sfx/death2.mp3'],
+
+      // Magic elements
+      fire: ['/sfx/fire1.mp3', '/sfx/fire2.mp3'],
+      ice: ['/sfx/ice1.mp3', '/sfx/ice2.mp3'],
+      lightning: ['/sfx/lightning1.mp3', '/sfx/lightning2.mp3'],
+      poison: ['/sfx/poison1.mp3'],
+      heal: ['/sfx/heal1.mp3', '/sfx/heal2.mp3'],
+      dark: ['/sfx/dark1.mp3', '/sfx/dark2.mp3'],
+
+      // Dragon
+      dragonRoar: ['/sfx/dragon_roar1.mp3', '/sfx/dragon_roar2.mp3'],
+      dragonBreath: ['/sfx/dragon_breath1.mp3', '/sfx/dragon_breath2.mp3'],
+
+      // Movement/abilities
+      dash: ['/sfx/dash1.mp3', '/sfx/dash2.mp3'],
+      teleport: ['/sfx/teleport1.mp3'],
+      powerup: ['/sfx/powerup1.mp3'],
+      levelup: ['/sfx/levelup1.mp3'],
+
+      // Explosions
+      explosion: ['/sfx/explosion1.mp3', '/sfx/explosion2.mp3'],
+      fireball: ['/sfx/fireball1.mp3', '/sfx/fireball2.mp3'],
+
+      // Alerts/events
+      horn: ['/sfx/horn1.mp3', '/sfx/horn2.mp3'],
+      fanfare: ['/sfx/fanfare1.mp3'],
+
+      // UI/items
+      coin: ['/sfx/coin1.mp3', '/sfx/coin2.mp3'],
+      pickup: ['/sfx/pickup1.mp3'],
+      error: ['/sfx/error1.mp3'],
+      mount: ['/sfx/mount1.mp3'],
+      dismount: ['/sfx/dismount1.mp3'],
+    };
+
+    const poolSize = 4; // Allow 4 concurrent plays per sfx
+
+    Object.entries(sfxFiles).forEach(([category, paths]) => {
+      const sounds: HTMLAudioElement[] = [];
+      for (let i = 0; i < poolSize; i++) {
+        const path = paths[i % paths.length];
+        const audio = new Audio(path);
+        audio.volume = this.sfxVolume;
+        audio.preload = 'auto';
+        sounds.push(audio);
+      }
+      this.sfxPools.set(category as SfxCategory, { sounds, index: 0 });
+    });
+  }
+
+  public playSfx(category: SfxCategory, volume?: number, pitchVariation?: boolean) {
+    const pool = this.sfxPools.get(category);
+    if (!pool) return;
+
+    const sound = pool.sounds[pool.index];
+    pool.index = (pool.index + 1) % pool.sounds.length;
+
+    sound.currentTime = 0;
+    sound.volume = (volume ?? 1) * this.sfxVolume;
+
+    if (pitchVariation && this.audioContext) {
+      // Slight pitch variation for repeated sounds
+      sound.playbackRate = 0.9 + Math.random() * 0.2;
+    } else {
+      sound.playbackRate = 1;
+    }
+
+    sound.play().catch(() => {});
+  }
+
+  public playSfxAt(category: SfxCategory, pos: { x: number; y: number }, listenerPos: { x: number; y: number }, maxDist: number = 800) {
+    const dx = pos.x - listenerPos.x;
+    const dy = pos.y - listenerPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > maxDist) return;
+
+    const volume = 1 - (dist / maxDist);
+    this.playSfx(category, volume * volume, true); // Square falloff
+  }
+
+  public setSfxVolume(volume: number) {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+  }
+
+  public getSfxVolume(): number {
+    return this.sfxVolume;
   }
 
   private connectTrackToContext(track: TrackInfo, gainNode: GainNode) {

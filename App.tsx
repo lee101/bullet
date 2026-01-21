@@ -1,24 +1,63 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { HUD } from './components/HUD';
 import { MainMenu } from './components/MainMenu';
 import { UpgradeScreen } from './components/UpgradeScreen';
 import { ShopUI } from './components/ShopUI';
+import { TestUI } from './components/TestUI';
+import { MagicWheelUI } from './components/MagicWheelUI';
+import { Lobby } from './components/Lobby';
+import { CharacterSelect } from './components/CharacterSelect';
 import { GameEngine } from './engine/GameEngine';
 import { InputManager } from './engine/InputManager';
 import { audioManager } from './engine/AudioManager';
-import { GameState } from './types';
+import { shouldRunTests } from './engine/TestRunner';
+import { GameState, LobbySlot, InputType } from './types';
+
+const createEmptySlot = (): LobbySlot => ({
+  joined: false,
+  controllerId: null,
+  inputType: 'GAMEPAD',
+  selectedCharacter: null,
+  ready: false,
+});
 
 const App: React.FC = () => {
   const input = useMemo(() => new InputManager(), []);
   const engine = useMemo(() => new GameEngine(input), [input]);
-  
+
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [drawState, setDrawState] = useState(engine.getDrawState());
+  const [lobbySlots, setLobbySlots] = useState<LobbySlot[]>([createEmptySlot(), createEmptySlot(), createEmptySlot(), createEmptySlot()]);
+  const [fps, setFps] = useState(60);
+  const [preWarmed, setPreWarmed] = useState(false);
+  const frameTimesRef = useRef<number[]>([]);
+  const lastFrameRef = useRef(performance.now());
+
+  // Pre-warm engine while in menu
+  useEffect(() => {
+    if (!preWarmed && gameState === GameState.MENU) {
+      const timer = setTimeout(async () => {
+        await engine.preWarm();
+        setPreWarmed(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [engine, gameState, preWarmed]);
 
   useEffect(() => {
     const interval = setInterval(() => {
+      const now = performance.now();
+      const delta = now - lastFrameRef.current;
+      lastFrameRef.current = now;
+
+      // Track frame times for FPS calculation
+      frameTimesRef.current.push(delta);
+      if (frameTimesRef.current.length > 30) frameTimesRef.current.shift();
+      const avgFrame = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
+      setFps(Math.round(1000 / avgFrame));
+
       const state = engine.getDrawState();
       setDrawState(state);
       setGameState(engine.state);
@@ -27,7 +66,7 @@ const App: React.FC = () => {
       const hasBoss = state.enemies.some(e => e.type === 'BOSS_DRAKE');
       const bossCount = state.enemies.filter(e => e.type === 'BOSS_DRAKE').length;
 
-      if (engine.state === GameState.MENU) {
+      if (engine.state === GameState.MENU || engine.state === GameState.LOBBY || engine.state === GameState.CHARACTER_SELECT) {
         audioManager.play('menu');
         audioManager.clearEffects();
       } else if (engine.state === GameState.SHOP) {
@@ -69,10 +108,63 @@ const App: React.FC = () => {
     };
   }, [engine, gameState]);
 
-  const handleStart = (playerCount: number) => {
-    engine.start(playerCount);
-    setGameState(GameState.PLAYING);
+  const handleStart = (_playerCount: number) => {
+    setLobbySlots([createEmptySlot(), createEmptySlot(), createEmptySlot(), createEmptySlot()]);
+    setGameState(GameState.LOBBY);
+    engine.state = GameState.LOBBY;
   };
+
+  const handlePlayerJoin = useCallback((slot: number, controllerId: number, inputType: InputType) => {
+    setLobbySlots(prev => {
+      const next = [...prev];
+      next[slot] = { joined: true, controllerId, inputType, selectedCharacter: null, ready: false };
+      return next;
+    });
+  }, []);
+
+  const handlePlayerLeave = useCallback((slot: number) => {
+    setLobbySlots(prev => {
+      const next = [...prev];
+      next[slot] = createEmptySlot();
+      return next;
+    });
+  }, []);
+
+  const handleLobbyProceed = useCallback(() => {
+    setGameState(GameState.CHARACTER_SELECT);
+    engine.state = GameState.CHARACTER_SELECT;
+  }, [engine]);
+
+  const handleLobbyBack = useCallback(() => {
+    setGameState(GameState.MENU);
+    engine.state = GameState.MENU;
+  }, [engine]);
+
+  const handleSelectCharacter = useCallback((slotIndex: number, characterId: string) => {
+    setLobbySlots(prev => {
+      const next = [...prev];
+      if (next[slotIndex]) next[slotIndex] = { ...next[slotIndex], selectedCharacter: characterId };
+      return next;
+    });
+  }, []);
+
+  const handleReady = useCallback((slotIndex: number, ready: boolean) => {
+    setLobbySlots(prev => {
+      const next = [...prev];
+      if (next[slotIndex]) next[slotIndex] = { ...next[slotIndex], ready };
+      return next;
+    });
+  }, []);
+
+  const handleCharacterSelectBack = useCallback(() => {
+    setGameState(GameState.LOBBY);
+    engine.state = GameState.LOBBY;
+  }, [engine]);
+
+  const handleStartGame = useCallback((selections: { slotIndex: number; characterId: string; controllerId: number; inputType: InputType }[]) => {
+    engine.startWithCharacters(selections);
+    setGameState(GameState.PLAYING);
+  }, [engine]);
 
   const handleRestart = () => {
     engine.reset();
@@ -108,13 +200,36 @@ const App: React.FC = () => {
     setGameState(GameState.MENU);
   };
 
+  if (shouldRunTests()) {
+    return <TestUI />;
+  }
+
   return (
     <div className="relative w-screen h-screen bg-[#050505] overflow-hidden font-rajdhani text-white">
       <div className="w-full h-full">
         <div className="relative w-full h-full">
-          
+
           {gameState === GameState.MENU && <MainMenu onStart={handleStart} />}
-          
+
+          {gameState === GameState.LOBBY && (
+            <Lobby
+              onPlayerJoin={handlePlayerJoin}
+              onPlayerLeave={handlePlayerLeave}
+              onProceed={handleLobbyProceed}
+              onBack={handleLobbyBack}
+            />
+          )}
+
+          {gameState === GameState.CHARACTER_SELECT && (
+            <CharacterSelect
+              slots={lobbySlots}
+              onSelectCharacter={handleSelectCharacter}
+              onReady={handleReady}
+              onBack={handleCharacterSelectBack}
+              onStartGame={handleStartGame}
+            />
+          )}
+
           {gameState === GameState.UPGRADE && (
             <UpgradeScreen onSelect={handleUpgrade} />
           )}
@@ -133,17 +248,38 @@ const App: React.FC = () => {
 
           <div className="relative w-full h-full flex items-center justify-center">
             <GameCanvas engine={engine} />
-            {gameState !== GameState.MENU && (
-              <HUD 
-                players={drawState.players} 
-                score={drawState.score} 
+            {gameState !== GameState.MENU && gameState !== GameState.LOBBY && gameState !== GameState.CHARACTER_SELECT && (
+              <HUD
+                players={drawState.players}
+                score={drawState.score}
                 money={drawState.money}
                 town={drawState.town}
                 traders={drawState.traders}
                 playerPositions={drawState.playerPositions}
                 onRestart={handleRestart}
+                fps={fps}
               />
             )}
+            {gameState === GameState.PLAYING && drawState.magicWheels?.map((wheelState, i) => {
+              if (!wheelState?.isOpen) return null;
+              const pos = drawState.playerPositions[i];
+              if (!pos) return null;
+              const cam = drawState.camera;
+              const screenX = pos.x - cam.x;
+              const screenY = pos.y - cam.y;
+              const wheelInfo = engine.getMagicWheelInfo(i);
+              return (
+                <MagicWheelUI
+                  key={i}
+                  state={wheelState}
+                  playerIndex={i}
+                  screenPos={{ x: screenX, y: screenY }}
+                  mana={drawState.players[i]?.magic || 0}
+                  manaCost={wheelInfo.manaCost}
+                  comboName={wheelInfo.comboName}
+                />
+              );
+            })}
           </div>
 
           {gameState === GameState.PAUSED && (

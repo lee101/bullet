@@ -1,6 +1,17 @@
 
 export type Vec2 = { x: number; y: number };
 
+export enum Faction {
+  BLUE = 'BLUE',   // player team
+  RED = 'RED',     // enemy faction
+  NEUTRAL = 'NEUTRAL'
+}
+
+export const FACTION_COLORS = {
+  BLUE: ['#4d99ff', '#00bfff', '#1e90ff', '#4169e1', '#00ced1', '#20b2aa'],
+  RED: ['#ff4444', '#dc143c', '#ff6347', '#b22222', '#8b0000', '#cd5c5c']
+};
+
 export enum ElementType {
   PHYSICAL = 'PHYSICAL',
   FIRE = 'FIRE',
@@ -13,6 +24,8 @@ export enum ElementType {
 
 export enum GameState {
   MENU = 'MENU',
+  LOBBY = 'LOBBY',
+  CHARACTER_SELECT = 'CHARACTER_SELECT',
   PLAYING = 'PLAYING',
   PAUSED = 'PAUSED',
   UPGRADE = 'UPGRADE',
@@ -32,6 +45,7 @@ export interface Mount {
   maxHp: number;
   angle: number;
   alerted: boolean;
+  riders: number[]; // player indices, first is driver
 }
 
 export interface WanderingTrader {
@@ -93,6 +107,37 @@ export interface TownState {
   pos: Vec2;
   goldGeneration: number;
   style: CityStyle;
+  faction: Faction;
+}
+
+export interface FactionCastle {
+  id: number;
+  pos: Vec2;
+  faction: Faction;
+  hp: number;
+  maxHp: number;
+  level: number;
+  spawnCooldown: number;
+  siegeActive: boolean;
+  siegeWave: number;
+  siegeEnemiesRemaining: number;
+}
+
+export interface Ally {
+  id: number;
+  pos: Vec2;
+  hp: number;
+  maxHp: number;
+  speed: number;
+  damage: number;
+  type: 'SOLDIER' | 'ARCHER' | 'MAGE' | 'KNIGHT';
+  cooldown: number;
+  targetId: number | null;
+  followPlayerId: number | null;
+  behavior: 'FOLLOW' | 'GUARD' | 'ATTACK' | 'WANDER';
+  angle: number;
+  color: string;
+  castCooldown?: number;
 }
 
 export interface FireArea {
@@ -107,6 +152,7 @@ export interface FireArea {
 
 export interface PlayerStats {
   id: number;
+  characterId: string;
   hp: number;
   maxHp: number;
   magic: number;
@@ -134,12 +180,14 @@ export interface PlayerStats {
   reviveProgress: number;
   knockbackVel: Vec2;
   mount: MountType | null;
+  mountId: number | null;
   weaponSlots: string[];
   armorSlots: string[];
   magicSlots: string[];
   equippedSpells: (string | null)[]; // 4 spell slots for X, Y, B, A
   projectileCount: number;
   statPoints: number;
+  lastAimAngle: number;
   statsDetail: {
     baseDamage: number;
     baseHp: number;
@@ -171,6 +219,27 @@ export interface MeleeAttack {
   arc: number;
 }
 
+export interface SlashEffect {
+  id: number;
+  pos: Vec2;
+  angle: number;
+  life: number;
+  maxLife: number;
+  range: number;
+  color: string;
+  width: number;
+}
+
+export interface FireTelegraph {
+  id: number;
+  pos: Vec2;
+  radius: number;
+  life: number;
+  maxLife: number;
+  flashRate: number;
+  damage: number;
+}
+
 export interface Enemy {
   id: number;
   pos: Vec2;
@@ -179,8 +248,9 @@ export interface Enemy {
   speed: number;
   radius: number;
   damage: number;
-  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'DRAGON_BOSS' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF' | 'DRAGON_ENEMY' | 'HARPY' | 'BOMBER' | 'SPLITTER' | 'SHIELDER' | 'HEALER' | 'CHARGER' | 'PHASER' | 'SPINNER' | 'NECRO' | 'SWARM_QUEEN' | 'MIRROR';
+  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'DRAGON_BOSS' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF' | 'DRAGON_ENEMY' | 'HARPY' | 'BOMBER' | 'SPLITTER' | 'SHIELDER' | 'HEALER' | 'CHARGER' | 'PHASER' | 'SPINNER' | 'NECRO' | 'SWARM_QUEEN' | 'MIRROR' | 'MAGE';
   movement: 'CHASE' | 'SNIPE' | 'ORBIT' | 'WANDER' | 'BOSS_PATTERN' | 'STILL' | 'PATROL';
+  faction?: Faction;
   cooldown: number;
   knockbackVel: Vec2;
   slowTimer: number;
@@ -204,12 +274,14 @@ export interface Enemy {
   reviveTimer?: number;
   shieldActive?: boolean;
   fireBreathCooldown?: number;
+  swipeCooldown?: number;
+  telegraphCooldown?: number;
 }
 
 export interface Pickup {
   id: number;
   pos: Vec2;
-  type: 'WEAPON_SPREAD' | 'WEAPON_BEAM' | 'REPAIR' | 'MAGIC_BOOST' | 'CHEST';
+  type: 'WEAPON_SPREAD' | 'WEAPON_BEAM' | 'REPAIR' | 'MAGIC_BOOST' | 'CHEST' | 'HEALTH_POTION' | 'MANA_POTION' | 'SPEED_BOOST' | 'DAMAGE_BOOST' | 'COIN_BAG';
   life: number;
 }
 
@@ -280,6 +352,12 @@ export interface Campfire {
   radius: number;
 }
 
+export interface Torch {
+  id: number;
+  pos: Vec2;
+  flicker: number;
+}
+
 export interface Coin {
   id: number;
   pos: Vec2;
@@ -299,7 +377,7 @@ export type AttackDirection = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST' | 'NORTHEAST' 
 
 export interface WorldEvent {
   id: number;
-  type: 'ATTACK_WAVE' | 'BOSS_SPAWN' | 'MERCHANT_CARAVAN' | 'WILD_HUNT' | 'STORM';
+  type: 'ATTACK_WAVE' | 'BOSS_SPAWN' | 'MERCHANT_CARAVAN' | 'WILD_HUNT' | 'STORM' | 'SIEGE';
   startTime: number;
   duration: number;
   warningTime: number;
@@ -308,6 +386,10 @@ export interface WorldEvent {
   pos?: Vec2;
   active: boolean;
   announced: boolean;
+  castleId?: number;
+  waveNum?: number;
+  totalWaves?: number;
+  enemiesRemaining?: number;
 }
 
 export interface EnemyCluster {
@@ -318,4 +400,128 @@ export interface EnemyCluster {
   behavior: 'AGGRESSIVE' | 'HUNTING' | 'PATROLLING' | 'FLEEING' | 'RAIDING';
   morale: number;
   leader?: number;
+}
+
+// Magic Wheel System - 8 elements in cardinal/diagonal directions
+export enum MagicElement {
+  BLACK = 'BLACK',     // Top - dark/void magic
+  CURE = 'CURE',       // Bottom - healing/restoration
+  FIRE = 'FIRE',       // Right - flames
+  ICE = 'ICE',         // Left - frost
+  LIGHTNING = 'LIGHTNING', // Top-Right diagonal
+  EARTH = 'EARTH',     // Top-Left diagonal
+  BLOOD = 'BLOOD',     // Bottom-Left diagonal
+  LUMIN = 'LUMIN'      // Bottom-Right diagonal - light magic
+}
+
+export type CastMode = 'ATTACK' | 'SELF' | 'WALL' | 'TOWER' | 'AREA';
+export type SpellModifier = 'NONE' | 'CHARGED' | 'RAPID' | 'SPLIT' | 'HOMING';
+
+export interface MagicStack {
+  elements: MagicElement[];
+  maxSize: number;
+}
+
+export interface MagicWheelState {
+  isOpen: boolean;
+  selectedSegment: number; // 0-7, -1 if none
+  stack: MagicStack;
+  castMode: CastMode;
+  aimAngle: number;
+  chargeTime: number;
+  modifier: SpellModifier;
+  chargeLevel: number; // 0-100 for charged spells
+}
+
+export interface MagicCombo {
+  elements: MagicElement[];
+  name: string;
+  effect: string;
+  baseDamage: number;
+  manaCost: number;
+  element: ElementType;
+}
+
+export interface MagicProjectile {
+  id: number;
+  pos: Vec2;
+  vel: Vec2;
+  elements: MagicElement[];
+  damage: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+  playerId: number;
+  pierce: number;
+  aoe: boolean;
+  aoeRadius: number;
+  modifier: SpellModifier;
+  splitCount: number; // how many times can still split
+  homing: boolean;
+  homingTarget?: number; // enemy id
+}
+
+export type PassiveId = 'iaido' | 'hex' | 'shadow_step' | 'divine_shield' | 'soul_harvest' | 'battle_hymn' | 'natures_gift' |
+  'fire_aura' | 'frost_armor' | 'storm_call' | 'shadow_cloak' | 'earth_shield' | 'light_burst' | 'water_flow' | 'wind_dash' |
+  'dragon_blood' | 'vampiric' | 'lycanthropy' | 'slime_split' | 'angelic' | 'demonic' | 'undead' | 'spectral' | 'beastial' | 'feral' | 'ancient' | 'corrupted' |
+  'dark_pact' | 'blood_magic' | 'war_cry' | 'shadow_dance' | 'holy_light' | 'plague' | 'arcane_surge' | 'wild_growth' | 'stone_skin' | 'blade_dance' |
+  'chef_special' | 'mime_trick' | 'merchant_luck' | 'scarecrow_fear' | 'chicken_rage' |
+  'phoenix_rebirth' | 'titan_strength' | 'void_walk' | 'time_warp' | 'world_eater';
+
+export interface CharacterPassive {
+  id: PassiveId;
+  name: string;
+  description: string;
+}
+
+export interface CharacterDef {
+  id: string;
+  name: string;
+  description: string;
+  stats: { hp: number; speed: number; damage: number; magic: number };
+  passive: CharacterPassive;
+  unlockCondition?: { type: 'CHALLENGE'; challengeId: string; description: string };
+  artPaths: { portrait: string; sprite: string; icon: string };
+}
+
+export type InputType = 'KEYBOARD_WASD' | 'KEYBOARD_ARROWS' | 'GAMEPAD';
+
+export interface LobbySlot {
+  joined: boolean;
+  controllerId: number | null;
+  inputType: InputType;
+  selectedCharacter: string | null;
+  ready: boolean;
+}
+
+export interface LobbyState {
+  slots: [LobbySlot, LobbySlot, LobbySlot, LobbySlot];
+  allReady: boolean;
+}
+
+export interface CharacterProgress {
+  unlockedCharacters: string[];
+  completedChallenges: string[];
+}
+
+export type ChallengeType = 'KILL_BOSS' | 'REACH_WAVE' | 'COLLECT_GOLD' | 'NO_DAMAGE_WAVE' | 'KILL_COUNT' | 'PLAY_AS';
+
+export interface Challenge {
+  id: string;
+  name: string;
+  description: string;
+  condition: {
+    type: ChallengeType;
+    target?: string;
+    amount?: number;
+  };
+  unlocksCharacter: string;
+}
+
+export interface Viewport {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  playerIndex: number;
 }

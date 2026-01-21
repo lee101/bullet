@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { PlayerStats, TownState, ShopItem } from '../types';
-import { SHOP_ITEMS, MAX_SLOTS, TOWN_DIALOGUES, SPELL_DATA, STAT_POINT_VALUES } from '../constants';
+import { SHOP_ITEMS, MAX_SLOTS, TOWN_DIALOGUES, SPELL_DATA, STAT_POINT_VALUES, SHOP_TIPS } from '../constants';
 import { InputManager } from '../engine/InputManager';
 
 // Shopkeeper portraits - replace with FLUX 4B generated images
@@ -50,6 +50,7 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
   });
 
   const dialogue = TOWN_DIALOGUES[Math.min(town.level - 1, TOWN_DIALOGUES.length - 1)];
+  const [tip] = useState(() => SHOP_TIPS[Math.floor(Math.random() * SHOP_TIPS.length)]);
 
   useEffect(() => {
     const checkController = () => {
@@ -171,6 +172,9 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
             <p className="text-yellow-500 font-bold tracking-[0.3em] text-[10px]">CITADEL LVL {town.level}</p>
             <div className="mt-1 p-2 bg-white/5 border border-white/10 rounded-lg max-w-xs">
               <p className="text-white/60 italic text-[10px] leading-snug">"{dialogue}"</p>
+            </div>
+            <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg max-w-xs">
+              <p className="text-yellow-400/80 text-[9px] leading-snug">{tip}</p>
             </div>
           </div>
         </div>
@@ -349,7 +353,10 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
                       const hasSlot = slotsRemaining === null || slotsRemaining > 0 || item.id === 'upgrade_town';
                       const isSpell = item.category === 'SPELL';
                       const ownsSpell = isSpell && ownedSpells.includes(item.id);
-                      const disabled = isSpell ? (!ownsSpell && !canAfford) : (!canAfford || !hasSlot);
+                      const ownsItem = currentSlots?.includes(item.id) || false;
+                      const isUtility = item.category === 'UTILITY';
+                      const alreadyOwned = !isUtility && (ownsSpell || ownsItem);
+                      const disabled = alreadyOwned ? true : (isSpell ? (!ownsSpell && !canAfford) : (!canAfford || !hasSlot));
                       const isSelected = hasController && idx === selectedPlayer && itemIdx === selectedItem;
 
                       const handleClick = () => {
@@ -368,13 +375,13 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
                       return (
                         <button
                           key={item.id}
-                          disabled={disabled && !ownsSpell}
+                          disabled={disabled && !alreadyOwned}
                           onClick={handleClick}
                           onMouseEnter={() => setHoveredItem(item)}
                           onMouseLeave={() => setHoveredItem(null)}
                           className={`w-full group flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${
                             isSelected ? 'bg-yellow-500/20 border-yellow-500' :
-                            ownsSpell ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20' :
+                            alreadyOwned ? 'bg-green-500/10 border-green-500/30' :
                             !disabled ? 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-yellow-500/30' : 'bg-black/40 border-white/5 opacity-40'
                           }`}
                         >
@@ -392,9 +399,9 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
                             )}
                           </div>
                           <div className={`font-orbitron font-bold text-sm flex-shrink-0 ${
-                            ownsSpell ? 'text-green-400' : canAfford ? 'text-yellow-400' : 'text-gray-600'
+                            alreadyOwned ? 'text-green-400' : canAfford ? 'text-yellow-400' : 'text-gray-600'
                           }`}>
-                            {ownsSpell ? '✓' : item.price}
+                            {alreadyOwned ? 'OWNED' : item.price}
                           </div>
                         </button>
                       );

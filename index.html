@@ -1,33 +1,71 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ethereal Storm</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+    <title>Ethereal Storm - Twin Stick Bullet Hell Game</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Ethereal Storm is an action-packed twin stick bullet hell game with magic combat, faction warfare, and procedural worlds. Play solo or with friends." />
+    <meta name="keywords" content="bullet hell, twin stick shooter, magic combat, multiplayer game, action game" />
+    <meta name="author" content="Ethereal Storm" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Ethereal Storm - Twin Stick Bullet Hell" />
+    <meta property="og:description" content="Action-packed twin stick bullet hell with magic combat and faction warfare." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:url" content="https://etherealstorm.game" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Preconnect to external origins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://esm.sh" />
+
+    <!-- DNS prefetch for CDN -->
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Critical CSS inline -->
     <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        background-color: #050505;
-        font-family: 'Rajdhani', sans-serif;
-        color: #e0e0e0;
-        user-select: none;
-      }
-      .font-orbitron { font-family: 'Orbitron', sans-serif; }
-      canvas {
-        display: block;
-        image-rendering: pixelated;
-      }
-      /* Custom scrollbar for game menus */
-      ::-webkit-scrollbar { width: 6px; }
-      ::-webkit-scrollbar-track { background: #1a1a1a; }
-      ::-webkit-scrollbar-thumb { background: #4a4a4a; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #6a6a6a; }
+      *,*::before,*::after{box-sizing:border-box}
+      body{margin:0;overflow:hidden;background:#050505;font-family:system-ui,-apple-system,sans-serif;color:#e0e0e0;user-select:none}
+      #root{width:100vw;height:100vh}
+      /* Loading skeleton */
+      .loading-skeleton{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#050505;z-index:9999}
+      .loading-title{font-size:2.5rem;font-weight:700;letter-spacing:0.1em;color:#fff;margin-bottom:1rem;animation:pulse 2s infinite}
+      .loading-bar{width:200px;height:4px;background:#222;border-radius:2px;overflow:hidden}
+      .loading-bar-fill{height:100%;background:linear-gradient(90deg,#4d99ff,#00ced1);animation:loading 1.5s ease-in-out infinite}
+      @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+      @keyframes loading{0%{width:0;margin-left:0}50%{width:100%;margin-left:0}100%{width:0;margin-left:100%}}
+      canvas{display:block}
+      .font-orbitron{font-family:'Orbitron',system-ui,sans-serif}
+      .font-rajdhani{font-family:'Rajdhani',system-ui,sans-serif}
+      ::-webkit-scrollbar{width:6px}
+      ::-webkit-scrollbar-track{background:#1a1a1a}
+      ::-webkit-scrollbar-thumb{background:#4a4a4a;border-radius:3px}
+      ::-webkit-scrollbar-thumb:hover{background:#6a6a6a}
     </style>
-  <script type="importmap">
+
+    <!-- Non-blocking font load with display=swap -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet" /></noscript>
+
+    <!-- Tailwind loaded async -->
+    <script>
+      (function(){
+        var s=document.createElement('script');
+        s.src='https://cdn.tailwindcss.com';
+        s.async=true;
+        document.head.appendChild(s);
+      })();
+    </script>
+
+    <script type="importmap">
 {
   "imports": {
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
@@ -36,10 +74,27 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
-</head>
+    <link rel="stylesheet" href="/index.css" />
+  </head>
   <body>
+    <!-- Loading skeleton for CLS prevention -->
+    <div id="loading-skeleton" class="loading-skeleton">
+      <div class="loading-title">ETHEREAL STORM</div>
+      <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    </div>
+
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+
+    <script type="module" src="/index.tsx"></script>
+
+    <!-- Remove skeleton once React mounts -->
+    <script>
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          var skeleton = document.getElementById('loading-skeleton');
+          if (skeleton) skeleton.style.display = 'none';
+        }, 100);
+      });
+    </script>
+  </body>
 </html>

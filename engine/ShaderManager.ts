@@ -2,7 +2,7 @@ export interface ShaderEffect {
   x: number;
   y: number;
   radius: number;
-  type: 'fire' | 'ice' | 'lightning' | 'magic' | 'poison' | 'heal';
+  type: 'fire' | 'ice' | 'lightning' | 'magic' | 'poison' | 'heal' | 'black' | 'earth' | 'blood' | 'lumin' | 'inferno' | 'blizzard' | 'thunderstorm' | 'chaos' | 'sanctuary';
   intensity: number;
   life: number;
   maxLife: number;
@@ -260,6 +260,400 @@ const FRAG_HEAL = `
   }
 `;
 
+const FRAG_BLACK = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float noise(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+
+    if (dist > r) { discard; }
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float warp = sin(angle * 6.0 - u_time * 3.0) * 0.3;
+    float voidPull = 1.0 - dist / r;
+    voidPull = pow(voidPull, 0.5 + warp);
+
+    float n = noise(uv * 30.0 - u_time);
+    float tendrils = abs(sin(angle * 12.0 + dist * 40.0 - u_time * 5.0));
+    tendrils = pow(tendrils, 3.0) * voidPull;
+
+    vec3 col = mix(
+      vec3(0.05, 0.0, 0.1),
+      vec3(0.3, 0.0, 0.5),
+      tendrils + n * 0.2
+    );
+
+    float alpha = voidPull * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.9);
+  }
+`;
+
+const FRAG_EARTH = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float voronoi(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float m = 1.0;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 n = vec2(float(x), float(y));
+        vec2 r = n + hash(i + n) - f;
+        m = min(m, dot(r, r));
+      }
+    }
+    return sqrt(m);
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+
+    if (dist > r) { discard; }
+
+    float cracks = voronoi(uv * 25.0);
+    cracks = smoothstep(0.0, 0.15, cracks);
+
+    float shake = sin(u_time * 20.0) * 0.01 * (1.0 - dist / r);
+    float glow = 1.0 - dist / r;
+    glow = pow(glow, 1.5);
+
+    float ring = abs(sin(dist * 30.0 - u_time * 8.0));
+    ring = pow(ring, 4.0) * glow;
+
+    vec3 col = mix(
+      vec3(0.3, 0.2, 0.1),
+      vec3(0.6, 0.4, 0.2),
+      cracks
+    );
+    col = mix(col, vec3(1.0, 0.6, 0.2), ring * 0.5);
+
+    float alpha = glow * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.8);
+  }
+`;
+
+const FRAG_BLOOD = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float noise(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+
+    if (dist > r) { discard; }
+
+    float pulse = sin(u_time * 4.0) * 0.15 + 0.85;
+    float glow = 1.0 - dist / r;
+    glow = pow(glow, 1.2) * pulse;
+
+    float n = noise(uv * 20.0 + u_time * 0.5);
+    float drip = smoothstep(0.4, 0.6, n + uv.y * 0.5 - u_time * 0.3);
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float veins = abs(sin(angle * 8.0 + dist * 30.0));
+    veins = pow(veins, 6.0) * glow;
+
+    vec3 col = mix(
+      vec3(0.4, 0.0, 0.05),
+      vec3(0.8, 0.1, 0.15),
+      glow + veins * 0.3
+    );
+    col = mix(col, vec3(0.2, 0.0, 0.0), drip * 0.4);
+
+    float alpha = glow * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.85);
+  }
+`;
+
+const FRAG_LUMIN = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+
+    if (dist > r) { discard; }
+
+    float glow = 1.0 - dist / r;
+    glow = pow(glow, 0.6);
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float rays = abs(sin(angle * 12.0 - u_time * 2.0));
+    rays = pow(rays, 2.0) * glow;
+
+    float pulse = sin(u_time * 8.0) * 0.1 + 0.9;
+    float halo = smoothstep(r * 0.7, r * 0.5, dist) * pulse;
+
+    float sparkle = sin(angle * 24.0 + u_time * 10.0) * sin(dist * 80.0);
+    sparkle = max(0.0, sparkle) * glow;
+
+    vec3 col = mix(
+      vec3(1.0, 0.95, 0.7),
+      vec3(1.0, 1.0, 1.0),
+      glow
+    );
+    col += vec3(0.3, 0.3, 0.1) * rays;
+    col += vec3(0.5) * sparkle;
+
+    float alpha = (glow * 0.7 + halo * 0.3) * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.75);
+  }
+`;
+
+// Combo effect shaders - more intense and complex
+const FRAG_INFERNO = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float noise(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  float fbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
+    return v;
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+    if (dist > r) { discard; }
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float n = fbm(uv * 12.0 + u_time * 3.0);
+    float flame = 1.0 - dist / r;
+    flame = pow(flame, 0.8) * (0.5 + 0.5 * n);
+    float swirl = sin(angle * 6.0 + dist * 20.0 - u_time * 8.0) * 0.5 + 0.5;
+    float explosion = sin(dist * 30.0 - u_time * 15.0);
+    explosion = max(0.0, explosion) * flame;
+
+    vec3 col = mix(vec3(1.0, 0.1, 0.0), vec3(1.0, 0.9, 0.3), flame * swirl);
+    col += vec3(1.0, 0.5, 0.0) * explosion * 0.5;
+    float alpha = flame * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.9);
+  }
+`;
+
+const FRAG_BLIZZARD = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float voronoi(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    float m = 1.0;
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+      vec2 n = vec2(float(x), float(y));
+      vec2 o = vec2(hash(i + n), hash(i + n + 1.0));
+      o = 0.5 + 0.5 * sin(u_time * 2.0 + 6.28 * o);
+      vec2 r = n + o - f;
+      m = min(m, dot(r, r));
+    }
+    return sqrt(m);
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+    if (dist > r) { discard; }
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float spin = angle + u_time * 3.0;
+    float crystal = voronoi(uv * 30.0);
+    float frost = 1.0 - dist / r;
+    frost = pow(frost, 0.7);
+    float shards = abs(sin(spin * 8.0)) * frost;
+    float snowfall = hash(uv * 50.0 + u_time);
+    snowfall = step(0.97, snowfall) * frost;
+
+    vec3 col = mix(vec3(0.2, 0.6, 1.0), vec3(1.0, 1.0, 1.0), crystal * frost);
+    col += vec3(0.5, 0.8, 1.0) * shards * 0.3;
+    col += vec3(1.0) * snowfall;
+    float alpha = frost * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.85);
+  }
+`;
+
+const FRAG_THUNDERSTORM = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float rand(float x) { return fract(sin(x * 12.9898) * 43758.5453); }
+  float rand2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+    if (dist > r) { discard; }
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float storm = 1.0 - dist / r;
+    float flash = rand(floor(u_time * 15.0)) > 0.7 ? 2.0 : 1.0;
+    float bolts = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) * 0.785 + u_time * 0.5;
+      float b = abs(sin(angle * 16.0 - a + rand(float(i)) * 6.28));
+      b = pow(b, 8.0);
+      bolts += b * step(0.5, rand(float(i) + floor(u_time * 8.0)));
+    }
+    bolts *= storm;
+
+    vec3 col = mix(vec3(0.3, 0.3, 0.8), vec3(1.0, 1.0, 0.6), bolts);
+    col *= flash;
+    col += vec3(0.2, 0.4, 0.8) * storm * 0.5;
+    float alpha = (storm * 0.6 + bolts * 0.4) * u_intensity;
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+const FRAG_CHAOS = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  float noise(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+    if (dist > r) { discard; }
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float warp = sin(angle * 4.0 + u_time * 5.0) * cos(dist * 20.0 - u_time * 3.0);
+    float chaos = 1.0 - dist / r;
+    chaos = pow(chaos, 0.5 + warp * 0.3);
+    float n = noise(uv * 40.0 + u_time * 2.0);
+    float rift = abs(sin(angle * 12.0 - u_time * 7.0 + n * 6.28));
+    rift = pow(rift, 3.0) * chaos;
+
+    float hue = fract(angle / 6.28 + u_time * 0.3 + n * 0.5);
+    vec3 col;
+    if (hue < 0.33) col = mix(vec3(1.0, 0.0, 0.5), vec3(0.5, 0.0, 1.0), hue * 3.0);
+    else if (hue < 0.66) col = mix(vec3(0.5, 0.0, 1.0), vec3(0.0, 0.5, 1.0), (hue - 0.33) * 3.0);
+    else col = mix(vec3(0.0, 0.5, 1.0), vec3(1.0, 0.0, 0.5), (hue - 0.66) * 3.0);
+    col = mix(col, vec3(0.0), 1.0 - chaos);
+    col += vec3(1.0) * rift * 0.3;
+
+    float alpha = chaos * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.9);
+  }
+`;
+
+const FRAG_SANCTUARY = `
+  precision mediump float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform vec2 u_center;
+  uniform float u_radius;
+  uniform float u_intensity;
+  uniform vec2 u_resolution;
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 center = u_center / u_resolution;
+    float dist = distance(uv, center);
+    float r = u_radius / min(u_resolution.x, u_resolution.y);
+    if (dist > r) { discard; }
+
+    vec2 d = uv - center;
+    float angle = atan(d.y, d.x);
+    float holy = 1.0 - dist / r;
+    float pulse = sin(u_time * 4.0) * 0.15 + 0.85;
+    float rings = abs(sin(dist * 50.0 - u_time * 3.0));
+    rings = pow(rings, 6.0) * holy;
+    float rays = abs(sin(angle * 8.0 + u_time * 2.0));
+    rays = pow(rays, 4.0) * holy * 0.5;
+    float dome = smoothstep(r, r * 0.8, dist);
+    float sparkle = sin(angle * 32.0 + dist * 100.0 + u_time * 8.0);
+    sparkle = max(0.0, sparkle) * holy * 0.3;
+
+    vec3 col = mix(vec3(0.2, 0.8, 0.4), vec3(1.0, 1.0, 0.9), holy * pulse);
+    col += vec3(1.0, 1.0, 0.8) * rings;
+    col += vec3(0.8, 1.0, 0.6) * rays;
+    col += vec3(1.0) * sparkle;
+
+    float alpha = (holy * 0.5 + dome * 0.3 + rings * 0.2) * u_intensity;
+    gl_FragColor = vec4(col, alpha * 0.8);
+  }
+`;
+
 export class ShaderManager {
   private gl: WebGLRenderingContext | null = null;
   private canvas: HTMLCanvasElement | null = null;
@@ -290,6 +684,15 @@ export class ShaderManager {
     this.compileProgram('magic', FRAG_MAGIC);
     this.compileProgram('poison', FRAG_POISON);
     this.compileProgram('heal', FRAG_HEAL);
+    this.compileProgram('black', FRAG_BLACK);
+    this.compileProgram('earth', FRAG_EARTH);
+    this.compileProgram('blood', FRAG_BLOOD);
+    this.compileProgram('lumin', FRAG_LUMIN);
+    this.compileProgram('inferno', FRAG_INFERNO);
+    this.compileProgram('blizzard', FRAG_BLIZZARD);
+    this.compileProgram('thunderstorm', FRAG_THUNDERSTORM);
+    this.compileProgram('chaos', FRAG_CHAOS);
+    this.compileProgram('sanctuary', FRAG_SANCTUARY);
 
     window.addEventListener('resize', () => this.resize());
     return true;

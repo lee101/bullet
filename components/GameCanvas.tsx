@@ -4,8 +4,11 @@ import { PLAYER_RADIUS, ELEMENT_COLORS, ENEMY_TYPES, BIOME_COLORS, TOWN_RADIUS, 
 import { GameEngine } from '../engine/GameEngine';
 import { assetManager } from '../engine/AssetManager';
 import { ShaderManager } from '../engine/ShaderManager';
-import { ElementType, CityStyle } from '../types';
+import { ElementType, CityStyle, MagicElement } from '../types';
 import { FEATURE_COLORS, blendBiomeColors, TerrainFeature } from '../engine/TerrainTiles';
+import { ELEMENT_COLORS as MAGIC_ELEMENT_COLORS } from '../engine/MagicWheel';
+import { terrainRenderer } from '../engine/TerrainRenderer';
+import { calculateViewports, drawViewportDividers } from '../engine/ViewportManager';
 
 interface GameCanvasProps { engine: GameEngine; }
 
@@ -52,7 +55,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
   const [canvasSize, setCanvasSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 
   useEffect(() => {
-    assetManager.load().then(() => setAssetsLoaded(true));
+    Promise.all([
+      assetManager.load(),
+      terrainRenderer.load()
+    ]).then(() => setAssetsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -95,6 +101,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
     };
   }, [engine]);
 
+  // Persistent pattern cache to avoid recreating patterns every frame
+  const patternCacheRef = useRef<Record<string, CanvasPattern | null>>({});
+  const seaPatternRef = useRef<CanvasPattern | null>(null);
+
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -106,6 +116,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
 
     const W = canvasSize.w;
     const H = canvasSize.h;
+    const patternCache = patternCacheRef.current;
 
     // Helper to draw image centered at position with size
     const drawImage = (img: HTMLImageElement | null, x: number, y: number, size: number, angle?: number) => {
@@ -118,6 +129,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       return true;
     };
 
+    // Pre-cache sea pattern
+    const seaImg = assetManager.getTerrain('SEA');
+    if (seaImg && seaImg.width > 0 && !seaPatternRef.current) {
+      seaPatternRef.current = ctx.createPattern(seaImg, 'repeat');
+    }
+
     const renderViewport = (
       vx: number, vy: number, vw: number, vh: number,
       cam: { x: number; y: number },
@@ -128,10 +145,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       ctx.beginPath();
       ctx.rect(vx, vy, vw, vh);
       ctx.clip();
-      ctx.translate(vx, vy);
+      ctx.translate(vx - cam.x, vy - cam.y);
 
-      ctx.fillStyle = BIOME_COLORS.SEA;
-      ctx.fillRect(0, 0, vw, vh);
+      if (seaPatternRef.current) {
+        ctx.save();
+        ctx.fillStyle = seaPatternRef.current;
+        ctx.translate(-cam.x % 256, -cam.y % 256);
+        ctx.fillRect(cam.x, cam.y, vw + 256, vh + 256);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = BIOME_COLORS.SEA;
+        ctx.fillRect(cam.x, cam.y, vw, vh);
+      }
 
       const world = state.world;
       const tileSize = world.gridSize;
@@ -140,96 +165,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       const tilesAcross = Math.ceil(vw / tileSize) + 1;
       const tilesDown = Math.ceil(vh / tileSize) + 1;
 
-      // Render terrain tiles with transitions and features
-      const featuresToDraw: { x: number; y: number; type: TerrainFeature; size: number }[] = [];
-
+      // Fast terrain rendering - solid colors only, no features
       for (let x = startTileX; x < startTileX + tilesAcross; x++) {
         for (let y = startTileY; y < startTileY + tilesDown; y++) {
           const worldX = x * tileSize;
           const worldY = y * tileSize;
-          const tile = world.getTileAt(worldX, worldY);
-
-          if (tile.biome === 'SEA') continue;
-
-          const screenX = worldX - cam.x;
-          const screenY = worldY - cam.y;
-
-          // Base biome color
-          ctx.fillStyle = BIOME_COLORS[tile.biome as keyof typeof BIOME_COLORS];
-          ctx.fillRect(screenX, screenY, tileSize + 1, tileSize + 1);
-
-          // Edge transitions - blend with neighbors
-          if (tile.edgeCode > 0) {
-            ctx.globalAlpha = 0.3;
-            if (tile.neighbors.n !== tile.biome && tile.neighbors.n !== 'SEA') {
-              const grad = ctx.createLinearGradient(screenX, screenY, screenX, screenY + tileSize * 0.3);
-              grad.addColorStop(0, BIOME_COLORS[tile.neighbors.n as keyof typeof BIOME_COLORS]);
-              grad.addColorStop(1, 'transparent');
-              ctx.fillStyle = grad;
-              ctx.fillRect(screenX, screenY, tileSize, tileSize * 0.3);
-            }
-            if (tile.neighbors.s !== tile.biome && tile.neighbors.s !== 'SEA') {
-              const grad = ctx.createLinearGradient(screenX, screenY + tileSize, screenX, screenY + tileSize * 0.7);
-              grad.addColorStop(0, BIOME_COLORS[tile.neighbors.s as keyof typeof BIOME_COLORS]);
-              grad.addColorStop(1, 'transparent');
-              ctx.fillStyle = grad;
-              ctx.fillRect(screenX, screenY + tileSize * 0.7, tileSize, tileSize * 0.3);
-            }
-            ctx.globalAlpha = 1;
-          }
-
-          // Collect features to draw on top
-          for (const feat of tile.features) {
-            const size = feat.type.includes('TREE') ? 28 : feat.type.includes('ROCK') || feat.type.includes('BOULDER') ? 18 : 12;
-            featuresToDraw.push({
-              x: worldX + feat.x,
-              y: worldY + feat.y,
-              type: feat.type,
-              size
-            });
-          }
-        }
-      }
-
-      ctx.save(); ctx.translate(-cam.x, -cam.y);
-
-      // Draw terrain features
-      for (const feat of featuresToDraw) {
-        const color = FEATURE_COLORS[feat.type];
-        if (!color) continue;
-
-        ctx.fillStyle = color;
-        if (feat.type.includes('TREE')) {
-          // Tree: trunk + canopy
-          ctx.fillStyle = '#4a3a2a';
-          ctx.fillRect(feat.x - 3, feat.y - 2, 6, 8);
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(feat.x, feat.y - 8, feat.size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (feat.type.includes('ROCK') || feat.type === 'BOULDER') {
-          ctx.beginPath();
-          ctx.ellipse(feat.x, feat.y, feat.size / 2, feat.size / 3, 0, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (feat.type === 'FLOWERS' || feat.type === 'MUSHROOMS') {
-          for (let i = 0; i < 4; i++) {
-            const ox = (Math.sin(i * 1.5 + feat.x) * 6);
-            const oy = (Math.cos(i * 1.5 + feat.y) * 6);
-            ctx.beginPath();
-            ctx.arc(feat.x + ox, feat.y + oy, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        } else if (feat.type.includes('RUINS')) {
-          ctx.fillRect(feat.x - feat.size / 2, feat.y - feat.size / 2, feat.size, feat.size);
-        } else if (feat.type === 'TALL_GRASS' || feat.type === 'REEDS') {
-          for (let i = 0; i < 5; i++) {
-            const ox = (i - 2) * 3;
-            ctx.fillRect(feat.x + ox, feat.y - 8, 2, 10);
-          }
-        } else {
-          ctx.beginPath();
-          ctx.arc(feat.x, feat.y, feat.size / 2, 0, Math.PI * 2);
-          ctx.fill();
+          const biome = world.getBiomeAtFast(worldX, worldY);
+          if (biome === 'SEA') continue;
+          ctx.fillStyle = BIOME_COLORS[biome as keyof typeof BIOME_COLORS];
+          ctx.fillRect(worldX, worldY, tileSize + 1, tileSize + 1);
         }
       }
 
@@ -237,13 +181,48 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       state.fireAreas.forEach(fa => {
           if (fa.pos.x < cam.x - fireViewMargin || fa.pos.x > cam.x + vw + fireViewMargin ||
               fa.pos.y < cam.y - fireViewMargin || fa.pos.y > cam.y + vh + fireViewMargin) return;
-          const pulse = 0.9 + Math.sin(Date.now() * 0.005) * 0.1;
-          const gradient = ctx.createRadialGradient(fa.pos.x, fa.pos.y, 0, fa.pos.x, fa.pos.y, fa.radius);
-          gradient.addColorStop(0, 'rgba(255, 100, 0, 0.85)');
-          gradient.addColorStop(0.4, 'rgba(255, 30, 0, 0.6)');
-          gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-          ctx.fillStyle = gradient;
-          ctx.beginPath(); ctx.arc(fa.pos.x, fa.pos.y, fa.radius * pulse, 0, Math.PI*2); ctx.fill();
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = '#ff4400';
+          ctx.beginPath(); ctx.arc(fa.pos.x, fa.pos.y, fa.radius, 0, Math.PI*2); ctx.fill();
+          ctx.globalAlpha = 1;
+      });
+
+      // Fire telegraphs - flashing warning circles
+      state.fireTelegraphs?.forEach(ft => {
+          if (ft.pos.x < cam.x - fireViewMargin || ft.pos.x > cam.x + vw + fireViewMargin ||
+              ft.pos.y < cam.y - fireViewMargin || ft.pos.y > cam.y + vh + fireViewMargin) return;
+          const flash = Math.sin(Date.now() * 0.02 * ft.flashRate) > 0;
+          const urgency = 1 - ft.life / ft.maxLife;
+          ctx.strokeStyle = flash ? `rgba(255, ${100 - urgency * 100}, 0, ${0.5 + urgency * 0.5})` : 'rgba(255, 200, 0, 0.3)';
+          ctx.lineWidth = 3 + urgency * 4;
+          ctx.setLineDash([10, 5]);
+          ctx.beginPath(); ctx.arc(ft.pos.x, ft.pos.y, ft.radius, 0, Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+          if (flash) {
+            ctx.fillStyle = `rgba(255, 100, 0, ${0.1 + urgency * 0.2})`;
+            ctx.beginPath(); ctx.arc(ft.pos.x, ft.pos.y, ft.radius, 0, Math.PI*2); ctx.fill();
+          }
+      });
+
+      // Slash effects
+      state.slashEffects?.forEach(s => {
+          if (s.pos.x < cam.x - 150 || s.pos.x > cam.x + vw + 150 ||
+              s.pos.y < cam.y - 150 || s.pos.y > cam.y + vh + 150) return;
+          const progress = 1 - s.life / s.maxLife;
+          const alpha = 1 - progress;
+          ctx.save();
+          ctx.translate(s.pos.x, s.pos.y);
+          ctx.rotate(s.angle);
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = s.width * (1 - progress * 0.5);
+          ctx.lineCap = 'round';
+          ctx.globalAlpha = alpha;
+          ctx.beginPath();
+          ctx.moveTo(-s.range * 0.5 * progress, 0);
+          ctx.quadraticCurveTo(0, -15 * (1 - progress), s.range * 0.5 + s.range * progress * 0.3, 0);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.restore();
       });
 
       const viewMargin = 100;
@@ -270,7 +249,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
               ctx.fillStyle = '#8B4513';
               ctx.fillRect(-5, -25, 4, 20);
             }
-            else { ctx.shadowBlur = 10; ctx.shadowColor = cfg.color; ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI*2); ctx.fill(); }
+            else { ctx.fillStyle = cfg.color; ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI*2); ctx.fill(); }
             ctx.restore();
           }
           // Health bar
@@ -389,12 +368,152 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.fillStyle = '#f00'; ctx.fillRect(e.pos.x - 11, e.pos.y - e.radius - 9, 22 * (e.hp / e.maxHp), 2);
       });
 
+      // Draw faction castles
+      state.factionCastles?.forEach(castle => {
+        if (castle.pos.x < viewLeft - 100 || castle.pos.x > viewRight + 100 ||
+            castle.pos.y < viewTop - 100 || castle.pos.y > viewBottom + 100) return;
+
+        const isBlue = castle.faction === 'BLUE';
+        const baseColor = isBlue ? '#1e90ff' : '#dc143c';
+        const darkColor = isBlue ? '#0a4a8a' : '#8b0000';
+        const lightColor = isBlue ? '#4dc3ff' : '#ff6666';
+
+        // Castle base
+        ctx.fillStyle = darkColor;
+        ctx.fillRect(castle.pos.x - 50, castle.pos.y - 30, 100, 60);
+
+        // Castle walls
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(castle.pos.x - 45, castle.pos.y - 40, 90, 10);
+
+        // Towers
+        ctx.fillStyle = darkColor;
+        ctx.fillRect(castle.pos.x - 55, castle.pos.y - 50, 20, 70);
+        ctx.fillRect(castle.pos.x + 35, castle.pos.y - 50, 20, 70);
+
+        // Tower tops
+        ctx.fillStyle = lightColor;
+        ctx.beginPath();
+        ctx.moveTo(castle.pos.x - 55, castle.pos.y - 50);
+        ctx.lineTo(castle.pos.x - 45, castle.pos.y - 70);
+        ctx.lineTo(castle.pos.x - 35, castle.pos.y - 50);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(castle.pos.x + 35, castle.pos.y - 50);
+        ctx.lineTo(castle.pos.x + 45, castle.pos.y - 70);
+        ctx.lineTo(castle.pos.x + 55, castle.pos.y - 50);
+        ctx.fill();
+
+        // Flag
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(castle.pos.x - 2, castle.pos.y - 80, 4, 40);
+        ctx.beginPath();
+        ctx.moveTo(castle.pos.x + 2, castle.pos.y - 80);
+        ctx.lineTo(castle.pos.x + 25, castle.pos.y - 70);
+        ctx.lineTo(castle.pos.x + 2, castle.pos.y - 60);
+        ctx.fill();
+
+        // Gate
+        ctx.fillStyle = '#2a1a0a';
+        ctx.fillRect(castle.pos.x - 15, castle.pos.y, 30, 30);
+
+        // HP bar
+        const hpPct = castle.hp / castle.maxHp;
+        ctx.fillStyle = '#333'; ctx.fillRect(castle.pos.x - 40, castle.pos.y + 40, 80, 6);
+        ctx.fillStyle = isBlue ? '#4dc3ff' : '#ff4444';
+        ctx.fillRect(castle.pos.x - 39, castle.pos.y + 41, 78 * hpPct, 4);
+
+        // Siege indicator
+        if (castle.siegeActive) {
+          ctx.strokeStyle = '#ffaa00';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([10, 5]);
+          ctx.beginPath();
+          ctx.arc(castle.pos.x, castle.pos.y, 120, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+
+      // Draw allies
+      state.allies?.forEach(ally => {
+        if (ally.pos.x < viewLeft - 20 || ally.pos.x > viewRight + 20 ||
+            ally.pos.y < viewTop - 20 || ally.pos.y > viewBottom + 20) return;
+
+        const size = ally.type === 'KNIGHT' ? 18 : ally.type === 'MAGE' ? 14 : 15;
+
+        // Body
+        ctx.fillStyle = ally.color;
+        ctx.beginPath();
+        ctx.arc(ally.pos.x, ally.pos.y, size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Direction indicator
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(
+          ally.pos.x + Math.cos(ally.angle) * size * 0.6,
+          ally.pos.y + Math.sin(ally.angle) * size * 0.6,
+          4, 0, Math.PI * 2
+        );
+        ctx.fill();
+
+        // Type indicator
+        if (ally.type === 'KNIGHT') {
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(ally.pos.x, ally.pos.y, size + 3, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (ally.type === 'MAGE') {
+          ctx.strokeStyle = '#cc33ff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(ally.pos.x, ally.pos.y, size + 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // HP bar
+        const hpPct = ally.hp / ally.maxHp;
+        if (hpPct < 1) {
+          ctx.fillStyle = '#333'; ctx.fillRect(ally.pos.x - 10, ally.pos.y - size - 8, 20, 3);
+          ctx.fillStyle = '#4dc3ff';
+          ctx.fillRect(ally.pos.x - 9, ally.pos.y - size - 7, 18 * hpPct, 2);
+        }
+      });
+
       state.coins.forEach(c => {
           if (c.pos.x < viewLeft || c.pos.x > viewRight || c.pos.y < viewTop || c.pos.y > viewBottom) return;
           const coinImg = assetManager.getItem('coin');
           if (!drawImage(coinImg, c.pos.x, c.pos.y, 24)) {
             ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(c.pos.x, c.pos.y, 8, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = '#aa8800'; ctx.beginPath(); ctx.arc(c.pos.x - 2, c.pos.y - 2, 3, 0, Math.PI*2); ctx.fill();
+          }
+      });
+
+      // Render pickups
+      state.pickups?.forEach(pk => {
+          if (pk.pos.x < viewLeft || pk.pos.x > viewRight || pk.pos.y < viewTop || pk.pos.y > viewBottom) return;
+          const bob = Math.sin(Date.now() * 0.004 + pk.id) * 3;
+          const colors: Record<string, string> = {
+            'HEALTH_POTION': '#ff4444', 'MANA_POTION': '#4444ff', 'COIN_BAG': '#ffd700',
+            'SPEED_BOOST': '#00ff88', 'DAMAGE_BOOST': '#ff8800', 'CHEST': '#aa7744'
+          };
+          ctx.fillStyle = colors[pk.type] || '#fff';
+          if (pk.type === 'CHEST') {
+            ctx.fillRect(pk.pos.x - 12, pk.pos.y - 8 + bob, 24, 16);
+            ctx.fillStyle = '#886633';
+            ctx.fillRect(pk.pos.x - 10, pk.pos.y - 6 + bob, 20, 4);
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(pk.pos.x - 3, pk.pos.y - 2 + bob, 6, 6);
+          } else if (pk.type.includes('POTION')) {
+            ctx.beginPath(); ctx.arc(pk.pos.x, pk.pos.y + bob, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffffff44';
+            ctx.beginPath(); ctx.arc(pk.pos.x - 3, pk.pos.y - 3 + bob, 3, 0, Math.PI * 2); ctx.fill();
+          } else {
+            ctx.beginPath(); ctx.arc(pk.pos.x, pk.pos.y + bob, 12, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(pk.pos.x, pk.pos.y + bob, 12, 0, Math.PI * 2); ctx.stroke();
           }
       });
 
@@ -407,6 +526,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.fillStyle = ELEMENT_COLORS[b.element];
           ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI*2); ctx.fill();
         }
+      });
+
+      // Magic projectiles - simple render
+      state.magicProjectiles?.forEach(mp => {
+        if (mp.pos.x < viewLeft - 50 || mp.pos.x > viewRight + 50 || mp.pos.y < viewTop - 50 || mp.pos.y > viewBottom + 50) return;
+        ctx.fillStyle = MAGIC_ELEMENT_COLORS[mp.elements[0]];
+        ctx.beginPath();
+        ctx.arc(mp.pos.x, mp.pos.y, mp.radius, 0, Math.PI * 2);
+        ctx.fill();
       });
 
       state.particles.forEach(p => {
@@ -466,64 +594,54 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(pos.x - 3, renderY - 3, 3, 0, Math.PI*2); ctx.fill();
         }
         if (p.isBlocking) { ctx.strokeStyle = '#4df'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(pos.x, renderY, PLAYER_RADIUS + 8, 0, Math.PI*2); ctx.stroke(); }
+
+        // Render floating magic element orbs above player - simplified
+        const wheelState = state.magicWheels?.[i];
+        if (wheelState?.stack?.elements?.length > 0) {
+          const elements = wheelState.stack.elements;
+          const orbRadius = 10;
+          const spacing = 24;
+          const baseY = renderY - PLAYER_RADIUS - 35;
+          const totalWidth = (elements.length - 1) * spacing;
+          const startX = pos.x - totalWidth / 2;
+
+          elements.forEach((el: MagicElement, idx: number) => {
+            const orbX = startX + idx * spacing;
+            ctx.fillStyle = MAGIC_ELEMENT_COLORS[el];
+            ctx.beginPath();
+            ctx.arc(orbX, baseY, orbRadius, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
       });
 
-      // Render campfires
+      // Render campfires - simplified
       state.campfires?.forEach(cf => {
         if (cf.pos.x < viewLeft - 80 || cf.pos.x > viewRight + 80 || cf.pos.y < viewTop - 80 || cf.pos.y > viewBottom + 80) return;
-        // Glow effect
-        const pulse = 0.8 + Math.sin(Date.now() * 0.004) * 0.2;
-        const gradient = ctx.createRadialGradient(cf.pos.x, cf.pos.y, 0, cf.pos.x, cf.pos.y, cf.radius * pulse);
-        gradient.addColorStop(0, 'rgba(255, 150, 50, 0.6)');
-        gradient.addColorStop(0.5, 'rgba(255, 100, 20, 0.3)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y, cf.radius * pulse, 0, Math.PI*2); ctx.fill();
-        // Fire core
         ctx.fillStyle = '#ff6600';
-        ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y, 12, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#ffaa00';
-        ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y - 5, 8, 0, Math.PI*2); ctx.fill();
-        // Logs
-        ctx.fillStyle = '#4a3020';
-        ctx.fillRect(cf.pos.x - 15, cf.pos.y + 5, 12, 4);
-        ctx.fillRect(cf.pos.x + 3, cf.pos.y + 5, 12, 4);
+        ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y, 10, 0, Math.PI*2); ctx.fill();
       });
 
-      // Render all towns with varied styles
+      // Render torches - simplified
+      state.torches?.forEach(torch => {
+        if (torch.pos.x < viewLeft - 40 || torch.pos.x > viewRight + 40 || torch.pos.y < viewTop - 40 || torch.pos.y > viewBottom + 40) return;
+        ctx.fillStyle = '#ff8800';
+        ctx.beginPath(); ctx.arc(torch.pos.x, torch.pos.y - 10, 5, 0, Math.PI*2); ctx.fill();
+      });
+
+      // Render towns - simplified
       state.towns?.forEach(town => {
         if (town.pos.x < viewLeft - 150 || town.pos.x > viewRight + 150 || town.pos.y < viewTop - 150 || town.pos.y > viewBottom + 150) return;
         const style = CITY_STYLES[town.style] || CITY_STYLES.MEDIEVAL;
-        // Draw city base
         ctx.fillStyle = style.color;
         ctx.beginPath(); ctx.arc(town.pos.x, town.pos.y, 70, 0, Math.PI*2); ctx.fill();
-        // Draw accent buildings/features based on style
-        ctx.fillStyle = style.accent;
-        if (town.style === 'MEDIEVAL') {
-          ctx.fillRect(town.pos.x - 25, town.pos.y - 40, 20, 50);
-          ctx.fillRect(town.pos.x + 5, town.pos.y - 35, 20, 45);
-          ctx.beginPath(); ctx.moveTo(town.pos.x - 25, town.pos.y - 40); ctx.lineTo(town.pos.x - 15, town.pos.y - 55); ctx.lineTo(town.pos.x - 5, town.pos.y - 40); ctx.fill();
-        } else if (town.style === 'DESERT') {
-          ctx.beginPath(); ctx.arc(town.pos.x, town.pos.y - 20, 30, Math.PI, 0); ctx.fill();
-          ctx.fillRect(town.pos.x + 25, town.pos.y - 50, 8, 40);
-        } else if (town.style === 'ASIAN') {
-          for (let i = 0; i < 3; i++) {
-            ctx.fillRect(town.pos.x - 30, town.pos.y - 20 - i * 15, 60 - i * 15, 8);
-          }
-        } else if (town.style === 'NORDIC') {
-          ctx.beginPath(); ctx.moveTo(town.pos.x - 35, town.pos.y); ctx.lineTo(town.pos.x, town.pos.y - 50); ctx.lineTo(town.pos.x + 35, town.pos.y); ctx.fill();
-        } else if (town.style === 'ELVEN') {
-          ctx.beginPath(); ctx.arc(town.pos.x - 20, town.pos.y - 25, 20, 0, Math.PI*2); ctx.fill();
-          ctx.beginPath(); ctx.arc(town.pos.x + 20, town.pos.y - 20, 18, 0, Math.PI*2); ctx.fill();
-        } else if (town.style === 'DWARVEN') {
-          ctx.fillRect(town.pos.x - 30, town.pos.y - 10, 60, 25);
-          ctx.fillStyle = '#222';
-          ctx.fillRect(town.pos.x - 15, town.pos.y - 5, 30, 20);
+
+        if (cityImg && cityImg.width > 0) {
+          ctx.drawImage(cityImg, town.pos.x - 80, town.pos.y - 80, 160, 160);
         }
-        // Town name and shop prompt
         ctx.fillStyle = 'white'; ctx.font = '12px Orbitron'; ctx.textAlign = 'center';
-        ctx.fillText(town.name, town.pos.x, town.pos.y - 80);
-        ctx.fillText(`[${getButtonPrompt('interact')}] SHOP`, town.pos.x, town.pos.y - 65);
+        ctx.fillText(town.name, town.pos.x, town.pos.y - 85);
+        ctx.fillText(`[${getButtonPrompt('interact')}] SHOP`, town.pos.x, town.pos.y - 70);
       });
 
       // Show heal cooldown for player in viewport if in town
@@ -585,32 +703,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
 
-      if (numPlayers <= 1) {
-        const cam = { x: state.playerPositions[0]?.x - W/2 || state.camera.x, y: state.playerPositions[0]?.y - H/2 || state.camera.y };
-        renderViewport(0, 0, W, H, cam, state, 0);
-      } else {
-        const hw = W / 2, hh = H / 2;
-        const viewports = [
-          { x: 0, y: 0, w: hw - 1, h: hh - 1 },
-          { x: hw + 1, y: 0, w: hw - 1, h: hh - 1 },
-          { x: 0, y: hh + 1, w: hw - 1, h: hh - 1 },
-          { x: hw + 1, y: hh + 1, w: hw - 1, h: hh - 1 },
-        ];
-        for (let i = 0; i < Math.min(numPlayers, 4); i++) {
-          const v = viewports[i];
-          const pos = state.playerPositions[i];
-          if (!pos) continue;
-          const cam = { x: pos.x - v.w/2, y: pos.y - v.h/2 };
-          renderViewport(v.x, v.y, v.w, v.h, cam, state, i);
-        }
-        ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(hw, 0); ctx.lineTo(hw, H); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, hh); ctx.lineTo(W, hh); ctx.stroke();
+      const viewports = calculateViewports(numPlayers, W, H);
+      for (const vp of viewports) {
+        const pos = state.playerPositions[vp.playerIndex];
+        if (!pos) continue;
+        const cam = { x: pos.x - vp.width / 2, y: pos.y - vp.height / 2 };
+        renderViewport(vp.x, vp.y, vp.width, vp.height, cam, state, vp.playerIndex);
       }
-
-      ctx.fillStyle = fps >= 55 ? 'rgba(0,255,0,0.7)' : fps >= 30 ? 'rgba(255,255,0,0.7)' : 'rgba(255,0,0,0.9)';
-      ctx.font = '12px monospace';
-      ctx.fillText(`FPS: ${fps} | Players: ${numPlayers} | Pos: ${state.playerPositions.length}`, 10, 20);
+      drawViewportDividers(ctx, numPlayers, W, H);
 
       // Build mode preview
       if (state.buildMode) {
@@ -667,6 +767,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
             ctx.fillText('!', x, y + 4);
           });
           ctx.globalAlpha = 1;
+
+          // Siege-specific indicators
+          if (ev.type === 'SIEGE' && ev.pos) {
+            const playerPos = state.playerPositions[0] || { x: 0, y: 0 };
+            const evCam = { x: playerPos.x - W / 2, y: playerPos.y - H / 2 };
+            const siegeX = ev.pos.x - evCam.x;
+            const siegeY = ev.pos.y - evCam.y;
+            const pulse = 0.6 + Math.sin(Date.now() * 0.008) * 0.4;
+
+            // Large pulsing circle at siege location
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 4;
+            ctx.globalAlpha = pulse * 0.7;
+            ctx.beginPath();
+            ctx.arc(siegeX, siegeY, 150 + pulse * 30, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Wave indicator
+            if (ev.waveNum && ev.totalWaves) {
+              ctx.globalAlpha = 1;
+              ctx.fillStyle = '#ffaa00';
+              ctx.font = 'bold 16px Orbitron';
+              ctx.textAlign = 'center';
+              ctx.fillText(`WAVE ${ev.waveNum}/${ev.totalWaves}`, siegeX, siegeY - 180);
+            }
+          }
         });
       }
 
@@ -675,45 +801,64 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         shaderRef.current.render(cam.x, cam.y);
       }
 
-      // Minimap with friend direction arrows
+      // Minimap centered on player
       const mapSize = 120;
       const mapMargin = 15;
-      const mapX = W - mapSize - mapMargin;
-      const mapY = H - mapSize - mapMargin;
-      const mapScale = mapSize / Math.max(WORLD_WIDTH, WORLD_HEIGHT);
+      const mapCenterX = W - mapSize/2 - mapMargin;
+      const mapCenterY = H - mapSize/2 - mapMargin;
+      const viewRadius = 1500;
+      const mapScale = mapSize / (viewRadius * 2);
+      const playerPos = state.playerPositions[0] || { x: 0, y: 0 };
 
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = '#0a1520';
       ctx.beginPath();
-      ctx.arc(mapX + mapSize/2, mapY + mapSize/2, mapSize/2, 0, Math.PI * 2);
+      ctx.arc(mapCenterX, mapCenterY, mapSize/2, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#334455';
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // clip to circle
       ctx.beginPath();
-      ctx.arc(mapX + mapSize/2, mapY + mapSize/2, mapSize/2 - 2, 0, Math.PI * 2);
+      ctx.arc(mapCenterX, mapCenterY, mapSize/2 - 2, 0, Math.PI * 2);
       ctx.clip();
 
       // town dot
-      const townMx = mapX + state.town.pos.x * mapScale;
-      const townMy = mapY + state.town.pos.y * mapScale;
-      ctx.fillStyle = '#aaa';
-      ctx.beginPath();
-      ctx.arc(townMx, townMy, 4, 0, Math.PI * 2);
-      ctx.fill();
+      const townDx = state.town.pos.x - playerPos.x;
+      const townDy = state.town.pos.y - playerPos.y;
+      if (Math.abs(townDx) < viewRadius && Math.abs(townDy) < viewRadius) {
+        ctx.fillStyle = '#aaa';
+        ctx.beginPath();
+        ctx.arc(mapCenterX + townDx * mapScale, mapCenterY + townDy * mapScale, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // castle dots
+      state.factionCastles?.forEach(castle => {
+        const dx = castle.pos.x - playerPos.x;
+        const dy = castle.pos.y - playerPos.y;
+        if (Math.abs(dx) > viewRadius || Math.abs(dy) > viewRadius) return;
+        const cx = mapCenterX + dx * mapScale;
+        const cy = mapCenterY + dy * mapScale;
+        ctx.fillStyle = castle.faction === 'BLUE' ? '#4dc3ff' : '#ff4444';
+        ctx.fillRect(cx - 3, cy - 3, 6, 6);
+        if (castle.siegeActive) {
+          ctx.strokeStyle = '#ffaa00';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(cx - 5, cy - 5, 10, 10);
+        }
+      });
 
       // player dots
       state.playerPositions.forEach((pos, i) => {
         if (state.players[i]?.isDead) return;
-        const px = mapX + pos.x * mapScale;
-        const py = mapY + pos.y * mapScale;
+        const dx = pos.x - playerPos.x;
+        const dy = pos.y - playerPos.y;
         ctx.fillStyle = state.players[i].color;
         ctx.beginPath();
-        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.arc(mapCenterX + dx * mapScale, mapCenterY + dy * mapScale, i === 0 ? 5 : 4, 0, Math.PI * 2);
         ctx.fill();
       });
 
@@ -723,24 +868,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       if (numPlayers > 1) {
         const arrowLen = 12;
         const arrowDist = 50;
+        const friendViewports = calculateViewports(numPlayers, W, H);
 
         for (let i = 0; i < numPlayers; i++) {
           const myPos = state.playerPositions[i];
           if (!myPos || state.players[i]?.isDead) continue;
 
-          // viewport bounds for this player
-          let vx = 0, vy = 0, vw = W, vh = H;
-          if (numPlayers > 1) {
-            const hw = W / 2, hh = H / 2;
-            const viewports = [
-              { x: 0, y: 0, w: hw - 1, h: hh - 1 },
-              { x: hw + 1, y: 0, w: hw - 1, h: hh - 1 },
-              { x: 0, y: hh + 1, w: hw - 1, h: hh - 1 },
-              { x: hw + 1, y: hh + 1, w: hw - 1, h: hh - 1 },
-            ];
-            const v = viewports[i];
-            vx = v.x; vy = v.y; vw = v.w; vh = v.h;
-          }
+          const vp = friendViewports.find(v => v.playerIndex === i);
+          if (!vp) continue;
+          const vx = vp.x, vy = vp.y, vw = vp.width, vh = vp.height;
 
           const cam = { x: myPos.x - vw/2, y: myPos.y - vh/2 };
 

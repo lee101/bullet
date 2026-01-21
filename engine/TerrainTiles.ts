@@ -34,66 +34,45 @@ export type TerrainFeature =
   | 'WATER_LILY' | 'REEDS'
   | 'SNOW_DRIFT' | 'ICE_PATCH' | 'FROZEN_TREE';
 
-// Feature spawn rules per biome
+// Feature spawn rules per biome - kept sparse for performance
 export const BIOME_FEATURES: Record<Biome, { feature: TerrainFeature; weight: number; density: number }[]> = {
   SEA: [],
   SHORE: [
-    { feature: 'ROCKS_SMALL', weight: 0.3, density: 0.08 },
-    { feature: 'REEDS', weight: 0.2, density: 0.05 },
-    { feature: 'TREE_PALM', weight: 0.1, density: 0.02 },
+    { feature: 'ROCKS_SMALL', weight: 0.5, density: 0.02 },
+    { feature: 'TREE_PALM', weight: 0.5, density: 0.01 },
   ],
   RIVER: [
-    { feature: 'WATER_LILY', weight: 0.4, density: 0.1 },
-    { feature: 'REEDS', weight: 0.3, density: 0.08 },
+    { feature: 'REEDS', weight: 1, density: 0.02 },
   ],
   LOWLAND: [
-    { feature: 'ROCKS_SMALL', weight: 0.2, density: 0.05 },
-    { feature: 'TALL_GRASS', weight: 0.4, density: 0.15 },
-    { feature: 'BUSH', weight: 0.2, density: 0.06 },
-    { feature: 'RUINS_FLOOR', weight: 0.05, density: 0.01 },
+    { feature: 'ROCKS_SMALL', weight: 0.3, density: 0.01 },
+    { feature: 'BUSH', weight: 0.7, density: 0.02 },
   ],
   GRASS: [
-    { feature: 'TREE_DECIDUOUS', weight: 0.15, density: 0.04 },
-    { feature: 'BUSH', weight: 0.25, density: 0.08 },
-    { feature: 'FLOWERS', weight: 0.3, density: 0.1 },
-    { feature: 'TALL_GRASS', weight: 0.3, density: 0.12 },
-    { feature: 'ROCKS_SMALL', weight: 0.1, density: 0.02 },
-    { feature: 'PATH_DIRT', weight: 0.05, density: 0.03 },
+    { feature: 'TREE_DECIDUOUS', weight: 0.4, density: 0.02 },
+    { feature: 'BUSH', weight: 0.4, density: 0.02 },
+    { feature: 'ROCKS_SMALL', weight: 0.2, density: 0.01 },
   ],
   SWAMP: [
-    { feature: 'TREE_DEAD', weight: 0.2, density: 0.06 },
-    { feature: 'MUSHROOMS', weight: 0.3, density: 0.1 },
-    { feature: 'REEDS', weight: 0.25, density: 0.08 },
-    { feature: 'BONES', weight: 0.1, density: 0.02 },
-    { feature: 'WATER_LILY', weight: 0.15, density: 0.04 },
+    { feature: 'TREE_DEAD', weight: 0.5, density: 0.02 },
+    { feature: 'REEDS', weight: 0.5, density: 0.02 },
   ],
   FOREST: [
-    { feature: 'TREE_DECIDUOUS', weight: 0.35, density: 0.2 },
-    { feature: 'TREE_PINE', weight: 0.25, density: 0.15 },
-    { feature: 'BUSH', weight: 0.2, density: 0.1 },
-    { feature: 'MUSHROOMS', weight: 0.1, density: 0.05 },
-    { feature: 'RUINS_PILLAR', weight: 0.03, density: 0.005 },
-    { feature: 'RUINS_WALL', weight: 0.02, density: 0.003 },
+    { feature: 'TREE_DECIDUOUS', weight: 0.5, density: 0.04 },
+    { feature: 'TREE_PINE', weight: 0.4, density: 0.03 },
+    { feature: 'BUSH', weight: 0.1, density: 0.01 },
   ],
   MOUNTAIN: [
-    { feature: 'ROCKS_LARGE', weight: 0.4, density: 0.15 },
-    { feature: 'BOULDER', weight: 0.25, density: 0.08 },
-    { feature: 'TREE_PINE', weight: 0.1, density: 0.03 },
-    { feature: 'PATH_STONE', weight: 0.08, density: 0.02 },
-    { feature: 'RUINS_WALL', weight: 0.05, density: 0.01 },
-    { feature: 'CAMP_TENT', weight: 0.02, density: 0.002 },
+    { feature: 'ROCKS_LARGE', weight: 0.6, density: 0.03 },
+    { feature: 'BOULDER', weight: 0.4, density: 0.02 },
   ],
   SNOW: [
-    { feature: 'SNOW_DRIFT', weight: 0.35, density: 0.2 },
-    { feature: 'ICE_PATCH', weight: 0.2, density: 0.1 },
-    { feature: 'FROZEN_TREE', weight: 0.15, density: 0.05 },
-    { feature: 'ROCKS_LARGE', weight: 0.15, density: 0.06 },
-    { feature: 'BONES', weight: 0.05, density: 0.01 },
-    { feature: 'SKULL', weight: 0.02, density: 0.003 },
+    { feature: 'FROZEN_TREE', weight: 0.4, density: 0.02 },
+    { feature: 'ROCKS_LARGE', weight: 0.6, density: 0.02 },
   ],
   TOWN: [
-    { feature: 'PATH_STONE', weight: 0.5, density: 0.3 },
-    { feature: 'FLOWERS', weight: 0.2, density: 0.05 },
+    { feature: 'PATH_STONE', weight: 0.7, density: 0.05 },
+    { feature: 'FLOWERS', weight: 0.3, density: 0.02 },
     { feature: 'BUSH', weight: 0.15, density: 0.04 },
   ],
 };
