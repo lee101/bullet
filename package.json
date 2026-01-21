@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:perf": "node scripts/perf-test.js"
+    "test:perf": "node scripts/perf-test.js",
+    "gen:textures": "FAL_API_KEY=$FAL_API_KEY npx tsx scripts/generate-textures.ts"
   },
   "dependencies": {
     "react-dom": "^19.2.3",

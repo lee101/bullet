@@ -28,7 +28,8 @@ export interface Mount {
   id: number;
   pos: Vec2;
   type: MountType;
-  life: number;
+  hp: number;
+  maxHp: number;
   angle: number;
   alerted: boolean;
 }
@@ -51,6 +52,38 @@ export interface Castle {
   damage: number;
 }
 
+export type WallPieceType = 'WALL_STRAIGHT' | 'WALL_CORNER' | 'WALL_GATE' | 'TOWER';
+
+export interface WallPiece {
+  id: number;
+  pos: Vec2;
+  type: WallPieceType;
+  hp: number;
+  maxHp: number;
+  height: number; // 0=ground, 1=wall height (players can jump on)
+  rotation: number; // 0, 90, 180, 270 degrees
+  isOpen?: boolean; // for gates
+}
+
+export interface Tower {
+  id: number;
+  pos: Vec2;
+  hp: number;
+  maxHp: number;
+  height: number;
+  range: number;
+  damage: number;
+  cooldown: number;
+  maxCooldown: number;
+  level: number;
+}
+
+export type EnemyAttackTarget = 'PLAYER' | 'WALL' | 'TOWER' | 'GATE';
+
+export interface FlyingEnemy {
+  canFlyOverWalls: boolean;
+}
+
 export interface TownState {
   id: number;
   name: string;
@@ -59,6 +92,7 @@ export interface TownState {
   level: number;
   pos: Vec2;
   goldGeneration: number;
+  style: CityStyle;
 }
 
 export interface FireArea {
@@ -105,7 +139,7 @@ export interface PlayerStats {
   magicSlots: string[];
   equippedSpells: (string | null)[]; // 4 spell slots for X, Y, B, A
   projectileCount: number;
-  // Stats detail for UI
+  statPoints: number;
   statsDetail: {
     baseDamage: number;
     baseHp: number;
@@ -145,7 +179,7 @@ export interface Enemy {
   speed: number;
   radius: number;
   damage: number;
-  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF';
+  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'DRAGON_BOSS' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF' | 'DRAGON_ENEMY' | 'HARPY' | 'BOMBER' | 'SPLITTER' | 'SHIELDER' | 'HEALER' | 'CHARGER' | 'PHASER' | 'SPINNER' | 'NECRO' | 'SWARM_QUEEN' | 'MIRROR';
   movement: 'CHASE' | 'SNIPE' | 'ORBIT' | 'WANDER' | 'BOSS_PATTERN' | 'STILL' | 'PATROL';
   cooldown: number;
   knockbackVel: Vec2;
@@ -157,6 +191,19 @@ export interface Enemy {
   visionCone: number;
   visionRange: number;
   patrolTarget?: Vec2;
+  canFly?: boolean;
+  targetWall?: number;
+  attackingStructure?: boolean;
+  // Special behavior state
+  chargeState?: 'idle' | 'windup' | 'charging';
+  chargeTimer?: number;
+  chargeDir?: Vec2;
+  phaseTimer?: number;
+  spinAngle?: number;
+  spawnTimer?: number;
+  reviveTimer?: number;
+  shieldActive?: boolean;
+  fireBreathCooldown?: number;
 }
 
 export interface Pickup {
@@ -183,6 +230,8 @@ export interface DamageNumber {
   life: number;
   maxLife: number;
   isCrit: boolean;
+  text?: string;
+  fontSize?: number;
 }
 
 export interface ShopItem {
@@ -223,6 +272,14 @@ export interface SpellData {
 
 export type Biome = 'SEA' | 'SHORE' | 'RIVER' | 'LOWLAND' | 'GRASS' | 'SWAMP' | 'FOREST' | 'MOUNTAIN' | 'SNOW' | 'TOWN';
 
+export type CityStyle = 'MEDIEVAL' | 'DESERT' | 'ASIAN' | 'NORDIC' | 'ELVEN' | 'DWARVEN';
+
+export interface Campfire {
+  id: number;
+  pos: Vec2;
+  radius: number;
+}
+
 export interface Coin {
   id: number;
   pos: Vec2;
@@ -236,4 +293,29 @@ export interface UpgradeOption {
   name: string;
   description: string;
   icon: string;
+}
+
+export type AttackDirection = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST' | 'NORTHEAST' | 'NORTHWEST' | 'SOUTHEAST' | 'SOUTHWEST';
+
+export interface WorldEvent {
+  id: number;
+  type: 'ATTACK_WAVE' | 'BOSS_SPAWN' | 'MERCHANT_CARAVAN' | 'WILD_HUNT' | 'STORM';
+  startTime: number;
+  duration: number;
+  warningTime: number;
+  directions?: AttackDirection[];
+  intensity: number;
+  pos?: Vec2;
+  active: boolean;
+  announced: boolean;
+}
+
+export interface EnemyCluster {
+  id: number;
+  pos: Vec2;
+  targetPos: Vec2;
+  enemies: number[];
+  behavior: 'AGGRESSIVE' | 'HUNTING' | 'PATROLLING' | 'FLEEING' | 'RAIDING';
+  morale: number;
+  leader?: number;
 }

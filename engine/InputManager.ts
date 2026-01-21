@@ -16,6 +16,19 @@ export class InputManager {
     return false;
   }
 
+  public getConnectedControllers(): number[] {
+    const connected: number[] = [];
+    const gamepads = navigator.getGamepads();
+    for (let i = 0; i < 4; i++) {
+      if (gamepads[i] && gamepads[i]!.connected) connected.push(i);
+    }
+    return connected;
+  }
+
+  public getControllerCount(): number {
+    return this.getConnectedControllers().length;
+  }
+
   public isBackPressed(): boolean {
     if (this.keys.has('Escape')) return true;
     const gp = navigator.getGamepads()[0];
@@ -171,5 +184,20 @@ export class InputManager {
       if (Math.abs(rx) > threshold || Math.abs(ry) > threshold) return { x: rx, y: ry };
     }
     return null;
+  }
+
+  public isShootPressed(playerIndex: number): boolean {
+    if (playerIndex === 0 && this.keys.has('KeyE')) return true;
+    if (playerIndex === 1 && this.keys.has('Slash')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[7].pressed;
+    return false;
+  }
+
+  public isBuildCancelPressed(playerIndex: number): boolean {
+    if (this.keys.has('Escape') || this.keys.has('KeyC')) return true;
+    const gp = navigator.getGamepads()[playerIndex];
+    if (gp) return gp.buttons[1].pressed;
+    return false;
   }
 }

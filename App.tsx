@@ -25,19 +25,28 @@ const App: React.FC = () => {
 
       // Handle music based on game state
       const hasBoss = state.enemies.some(e => e.type === 'BOSS_DRAKE');
+      const bossCount = state.enemies.filter(e => e.type === 'BOSS_DRAKE').length;
 
       if (engine.state === GameState.MENU) {
         audioManager.play('menu');
+        audioManager.clearEffects();
       } else if (engine.state === GameState.SHOP) {
         audioManager.play('town');
+        audioManager.clearEffects();
       } else if (engine.state === GameState.PLAYING) {
+        audioManager.play('battle');
+        // Blend boss music based on boss presence and health
         if (hasBoss) {
-          audioManager.play('boss');
+          const bossIntensity = Math.min(1, bossCount * 0.5 + 0.5);
+          audioManager.blendBossMusic(bossIntensity);
+          audioManager.applyDangerEffect(bossIntensity * 0.3);
         } else {
-          audioManager.play('battle');
+          audioManager.blendBossMusic(0);
+          audioManager.clearEffects();
         }
       } else if (engine.state === GameState.GAME_OVER) {
         audioManager.play('menu');
+        audioManager.clearEffects();
       }
     }, 16);
 
@@ -60,8 +69,8 @@ const App: React.FC = () => {
     };
   }, [engine, gameState]);
 
-  const handleStart = (multiplayer: boolean) => {
-    engine.start(multiplayer);
+  const handleStart = (playerCount: number) => {
+    engine.start(playerCount);
     setGameState(GameState.PLAYING);
   };
 
@@ -86,6 +95,10 @@ const App: React.FC = () => {
     engine.equipSpell(pIdx, spellId, slotIdx);
   };
 
+  const handleAllocateStat = (pIdx: number, stat: 'hp' | 'damage' | 'magic' | 'speed') => {
+    engine.allocateStat(pIdx, stat);
+  };
+
   const handleResume = () => {
     engine.resume();
   };
@@ -96,9 +109,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="relative w-screen h-screen bg-[#050505] flex items-center justify-center overflow-hidden font-rajdhani text-white">
-      <div className="w-full h-full max-w-[1920px] max-h-[1080px] flex items-center justify-center p-4">
-        <div className="relative w-full aspect-video flex items-center justify-center">
+    <div className="relative w-screen h-screen bg-[#050505] overflow-hidden font-rajdhani text-white">
+      <div className="w-full h-full">
+        <div className="relative w-full h-full">
           
           {gameState === GameState.MENU && <MainMenu onStart={handleStart} />}
           
@@ -113,6 +126,7 @@ const App: React.FC = () => {
                 town={drawState.town}
                 onBuy={handleBuy}
                 onEquipSpell={handleEquipSpell}
+                onAllocateStat={handleAllocateStat}
                 onExit={handleExitShop}
             />
           )}

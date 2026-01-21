@@ -1,8 +1,25 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PlayerStats, TownState } from '../types';
-import { SHOP_ITEMS, MAX_SLOTS, TOWN_DIALOGUES, SPELL_DATA } from '../constants';
+import { PlayerStats, TownState, ShopItem } from '../types';
+import { SHOP_ITEMS, MAX_SLOTS, TOWN_DIALOGUES, SPELL_DATA, STAT_POINT_VALUES } from '../constants';
 import { InputManager } from '../engine/InputManager';
+
+// Shopkeeper portraits - replace with FLUX 4B generated images
+const SHOPKEEPER_PORTRAITS: Record<number, string> = {
+  1: '/assets/shopkeeper/merchant_basic.png',
+  2: '/assets/shopkeeper/merchant_prosperous.png',
+  3: '/assets/shopkeeper/merchant_wealthy.png',
+  4: '/assets/shopkeeper/merchant_legendary.png',
+};
+
+// Item category art backgrounds
+const CATEGORY_ART: Record<string, string> = {
+  WEAPON: '/assets/shop/weapons_banner.png',
+  ARMOR: '/assets/shop/armor_banner.png',
+  MAGIC: '/assets/shop/magic_banner.png',
+  SPELL: '/assets/shop/spells_banner.png',
+  UTILITY: '/assets/shop/utility_banner.png',
+};
 
 interface ShopUIProps {
   players: PlayerStats[];
@@ -10,20 +27,23 @@ interface ShopUIProps {
   town: TownState;
   onBuy: (playerIdx: number, itemId: string, price: number) => void;
   onEquipSpell?: (playerIdx: number, spellId: string, slotIdx: number) => void;
+  onAllocateStat?: (playerIdx: number, stat: 'hp' | 'damage' | 'magic' | 'speed') => void;
   onExit: () => void;
   inputManager?: InputManager;
 }
 
-export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onEquipSpell, onExit, inputManager }) => {
-  const [activeTab, setActiveTab] = useState<'WEAPON' | 'ARMOR' | 'MAGIC' | 'SPELL' | 'UTILITY'>('WEAPON');
+export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onEquipSpell, onAllocateStat, onExit, inputManager }) => {
+  const [activeTab, setActiveTab] = useState<'STATS' | 'WEAPON' | 'ARMOR' | 'MAGIC' | 'SPELL' | 'UTILITY'>('STATS');
   const [selectedPlayer, setSelectedPlayer] = useState(0);
   const [selectedItem, setSelectedItem] = useState(0);
   const [hasController, setHasController] = useState(false);
-  const [equipMode, setEquipMode] = useState<number | null>(null); // Which slot we're equipping to
+  const [equipMode, setEquipMode] = useState<number | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<ShopItem | null>(null);
+  const [shopkeeperLoaded, setShopkeeperLoaded] = useState(false);
 
-  const tabs: ('WEAPON' | 'ARMOR' | 'MAGIC' | 'SPELL' | 'UTILITY')[] = ['WEAPON', 'ARMOR', 'MAGIC', 'SPELL', 'UTILITY'];
+  const tabs: ('STATS' | 'WEAPON' | 'ARMOR' | 'MAGIC' | 'SPELL' | 'UTILITY')[] = ['STATS', 'WEAPON', 'ARMOR', 'MAGIC', 'SPELL', 'UTILITY'];
 
-  const filteredItems = SHOP_ITEMS.filter(item => {
+  const filteredItems = activeTab === 'STATS' ? [] : SHOP_ITEMS.filter(item => {
       if (item.category !== activeTab) return false;
       if (item.tier > town.level) return false;
       return true;
@@ -119,18 +139,74 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
   const buyLabel = hasController ? 'Ⓐ Buy' : 'Click';
   const tabHint = hasController ? 'ⓁⒷ/ⓇⒷ' : '';
 
+  const currentItem = hoveredItem || filteredItems[selectedItem];
+  const shopkeeperLevel = Math.min(town.level, 4);
+
   return (
     <div className="fixed inset-0 z-[60] bg-[#0a0a0c]/95 backdrop-blur-2xl flex flex-col p-4 font-rajdhani">
-      <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-3">
-        <div className="flex items-center gap-6">
+      {/* Header with shopkeeper portrait */}
+      <div className="flex justify-between items-start mb-4 border-b border-white/5 pb-3">
+        <div className="flex items-center gap-4">
+          {/* Shopkeeper portrait */}
+          <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-yellow-500/30 bg-gradient-to-b from-amber-900/40 to-amber-950/60">
+            <img
+              src={SHOPKEEPER_PORTRAITS[shopkeeperLevel]}
+              alt="Shopkeeper"
+              className="w-full h-full object-cover"
+              onLoad={() => setShopkeeperLoaded(true)}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+            {!shopkeeperLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center text-4xl">
+                {town.level >= 3 ? '👑' : town.level >= 2 ? '🧙' : '🧔'}
+              </div>
+            )}
+            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-center py-0.5">
+              <span className="text-[8px] text-yellow-400 font-bold uppercase tracking-wider">Merchant</span>
+            </div>
+          </div>
+
           <div>
             <h2 className="text-3xl font-orbitron font-bold text-white tracking-tighter uppercase italic">{town.name}</h2>
             <p className="text-yellow-500 font-bold tracking-[0.3em] text-[10px]">CITADEL LVL {town.level}</p>
-          </div>
-          <div className="p-2 bg-white/5 border border-white/10 rounded-xl max-w-sm hidden lg:block">
-             <p className="text-white/60 italic text-xs leading-snug">"{dialogue}"</p>
+            <div className="mt-1 p-2 bg-white/5 border border-white/10 rounded-lg max-w-xs">
+              <p className="text-white/60 italic text-[10px] leading-snug">"{dialogue}"</p>
+            </div>
           </div>
         </div>
+
+        {/* Item preview panel */}
+        {currentItem && (
+          <div className="w-64 bg-black/40 border border-white/10 rounded-2xl p-3 mr-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-14 h-14 bg-gradient-to-br from-amber-900/40 to-amber-950/60 rounded-xl flex items-center justify-center text-3xl border border-white/10">
+                {currentItem.icon}
+              </div>
+              <div className="flex-1">
+                <div className="font-orbitron font-bold text-white text-sm">{currentItem.name}</div>
+                <div className="text-[9px] text-yellow-400/70 uppercase">{currentItem.category} T{currentItem.tier}</div>
+              </div>
+            </div>
+            <p className="text-white/50 text-[10px] mb-2">{currentItem.description}</p>
+            {currentItem.mods && Object.keys(currentItem.mods).length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {currentItem.mods.dmg && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[9px] rounded">+{currentItem.mods.dmg} DMG</span>}
+                {currentItem.mods.hp && <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[9px] rounded">+{currentItem.mods.hp} HP</span>}
+                {currentItem.mods.spd && <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] rounded">+{currentItem.mods.spd} SPD</span>}
+                {currentItem.mods.mag && <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[9px] rounded">+{currentItem.mods.mag} MP</span>}
+                {currentItem.mods.proj && <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[9px] rounded">+{currentItem.mods.proj} PROJ</span>}
+              </div>
+            )}
+            {currentItem.spellData && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 text-[9px] rounded">{currentItem.spellData.manaCost} MP</span>
+                {currentItem.spellData.damage > 0 && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[9px] rounded">{currentItem.spellData.damage} DMG</span>}
+                <span className="px-1.5 py-0.5 bg-gray-500/20 text-gray-400 text-[9px] rounded">{(currentItem.spellData.cooldown / 60).toFixed(1)}s CD</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-4">
           <div className="bg-yellow-400/5 border border-yellow-400/30 px-4 py-2 rounded-2xl text-center">
               <span className="text-yellow-400 font-bold text-xl font-orbitron">{money.toLocaleString()}</span>
@@ -213,8 +289,62 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
                   </div>
                 )}
 
+                {/* Stats allocation for STATS tab */}
+                {activeTab === 'STATS' && (
+                  <div className="flex-1 p-2">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-white/60 text-xs uppercase">Available Points</span>
+                      <span className={`font-orbitron font-bold text-2xl ${p.statPoints > 0 ? 'text-green-400' : 'text-white/30'}`}>
+                        {p.statPoints}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {(['hp', 'damage', 'magic', 'speed'] as const).map(stat => {
+                        const info = STAT_POINT_VALUES[stat];
+                        const canAllocate = p.statPoints >= info.cost;
+                        const currentVal = stat === 'hp' ? p.maxHp : stat === 'magic' ? p.maxMagic : p[stat];
+                        const icons = { hp: '❤️', damage: '⚔️', magic: '✨', speed: '💨' };
+                        const colors = { hp: 'green', damage: 'red', magic: 'purple', speed: 'blue' };
+                        return (
+                          <button
+                            key={stat}
+                            disabled={!canAllocate}
+                            onClick={() => onAllocateStat?.(idx, stat)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                              canAllocate ? `bg-${colors[stat]}-500/10 border-${colors[stat]}-500/30 hover:bg-${colors[stat]}-500/20` : 'bg-black/20 border-white/5 opacity-50'
+                            }`}
+                          >
+                            <span className="text-2xl">{icons[stat]}</span>
+                            <div className="flex-1 text-left">
+                              <div className="font-orbitron font-bold text-white uppercase text-sm">{stat}</div>
+                              <div className="text-[10px] text-white/40">
+                                Current: {typeof currentVal === 'number' ? currentVal.toFixed(stat === 'speed' ? 2 : 0) : currentVal}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className={`text-${colors[stat]}-400 font-bold text-sm`}>+{info.gain}</div>
+                              <div className="text-[9px] text-white/40">{info.cost} pt{info.cost > 1 ? 's' : ''}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 p-3 bg-white/5 rounded-xl border border-white/10">
+                      <div className="text-[10px] text-white/40 uppercase mb-2">Player Stats</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="text-white/60">Level: <span className="text-yellow-400 font-bold">{p.level}</span></div>
+                        <div className="text-white/60">XP: <span className="text-cyan-400 font-bold">{p.xp}</span></div>
+                        <div className="text-white/60">HP: <span className="text-green-400 font-bold">{p.maxHp}</span></div>
+                        <div className="text-white/60">DMG: <span className="text-red-400 font-bold">{p.damage}</span></div>
+                        <div className="text-white/60">Magic: <span className="text-purple-400 font-bold">{p.maxMagic}</span></div>
+                        <div className="text-white/60">Speed: <span className="text-blue-400 font-bold">{p.speed.toFixed(2)}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto space-y-1.5 custom-scrollbar">
-                  {filteredItems.map((item, itemIdx) => {
+                  {activeTab !== 'STATS' && filteredItems.map((item, itemIdx) => {
                       const canAfford = money >= item.price;
                       const hasSlot = slotsRemaining === null || slotsRemaining > 0 || item.id === 'upgrade_town';
                       const isSpell = item.category === 'SPELL';
@@ -240,6 +370,8 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
                           key={item.id}
                           disabled={disabled && !ownsSpell}
                           onClick={handleClick}
+                          onMouseEnter={() => setHoveredItem(item)}
+                          onMouseLeave={() => setHoveredItem(null)}
                           className={`w-full group flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${
                             isSelected ? 'bg-yellow-500/20 border-yellow-500' :
                             ownsSpell ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20' :
