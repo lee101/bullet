@@ -6,7 +6,6 @@ import { MainMenu } from './components/MainMenu';
 import { UpgradeScreen } from './components/UpgradeScreen';
 import { ShopUI } from './components/ShopUI';
 import { TestUI } from './components/TestUI';
-import { MagicWheelUI } from './components/MagicWheelUI';
 import { Lobby } from './components/Lobby';
 import { CharacterSelect } from './components/CharacterSelect';
 import { GameEngine } from './engine/GameEngine';
@@ -35,14 +34,10 @@ const App: React.FC = () => {
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameRef = useRef(performance.now());
 
-  // Pre-warm engine while in menu
+  // Pre-warm engine immediately
   useEffect(() => {
     if (!preWarmed && gameState === GameState.MENU) {
-      const timer = setTimeout(async () => {
-        await engine.preWarm();
-        setPreWarmed(true);
-      }, 100);
-      return () => clearTimeout(timer);
+      engine.preWarm().then(() => setPreWarmed(true));
     }
   }, [engine, gameState, preWarmed]);
 
@@ -73,15 +68,15 @@ const App: React.FC = () => {
         audioManager.play('town');
         audioManager.clearEffects();
       } else if (engine.state === GameState.PLAYING) {
-        audioManager.play('battle');
-        // Blend boss music based on boss presence and health
+        const inCombat = state.enemies.length > 2;
+        audioManager.play(inCombat ? 'battle' : 'explore');
         if (hasBoss) {
           const bossIntensity = Math.min(1, bossCount * 0.5 + 0.5);
           audioManager.blendBossMusic(bossIntensity);
           audioManager.applyDangerEffect(bossIntensity * 0.3);
         } else {
           audioManager.blendBossMusic(0);
-          audioManager.clearEffects();
+          if (!inCombat) audioManager.clearEffects();
         }
       } else if (engine.state === GameState.GAME_OVER) {
         audioManager.play('menu');
@@ -166,8 +161,8 @@ const App: React.FC = () => {
     setGameState(GameState.PLAYING);
   }, [engine]);
 
-  const handleRestart = () => {
-    engine.reset();
+  const handleRestart = async () => {
+    await engine.reset();
     setGameState(GameState.MENU);
   };
 
@@ -195,8 +190,8 @@ const App: React.FC = () => {
     engine.resume();
   };
 
-  const handleQuitToMenu = () => {
-    engine.reset();
+  const handleQuitToMenu = async () => {
+    await engine.reset();
     setGameState(GameState.MENU);
   };
 
@@ -260,26 +255,6 @@ const App: React.FC = () => {
                 fps={fps}
               />
             )}
-            {gameState === GameState.PLAYING && drawState.magicWheels?.map((wheelState, i) => {
-              if (!wheelState?.isOpen) return null;
-              const pos = drawState.playerPositions[i];
-              if (!pos) return null;
-              const cam = drawState.camera;
-              const screenX = pos.x - cam.x;
-              const screenY = pos.y - cam.y;
-              const wheelInfo = engine.getMagicWheelInfo(i);
-              return (
-                <MagicWheelUI
-                  key={i}
-                  state={wheelState}
-                  playerIndex={i}
-                  screenPos={{ x: screenX, y: screenY }}
-                  mana={drawState.players[i]?.magic || 0}
-                  manaCost={wheelInfo.manaCost}
-                  comboName={wheelInfo.comboName}
-                />
-              );
-            })}
           </div>
 
           {gameState === GameState.PAUSED && (

@@ -233,8 +233,8 @@ async function main() {
     console.log(`Generating: ${prompt.name}`);
     const buffer = await generateTexture(prompt);
     if (buffer) {
-      writeFileSync(join(OUTPUT_DIR, `${prompt.name}.png`), buffer);
-      console.log(`  Saved: ${prompt.name}.png`);
+      writeFileSync(join(OUTPUT_DIR, `${prompt.name}.webp`), buffer);
+      console.log(`  Saved: ${prompt.name}.webp`);
     }
   }
 

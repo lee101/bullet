@@ -143,11 +143,6 @@ export const HUD: React.FC<HUDProps> = ({ players, score, money, town, traders, 
         <div className="bg-black/60 backdrop-blur-xl border border-white/10 px-6 py-1.5 rounded-full flex items-center gap-6 shadow-2xl">
             <span className="text-xl font-orbitron font-bold text-white tracking-tighter leading-none">{score.toLocaleString()}</span>
             <span className="text-[10px] tracking-[0.3em] text-yellow-400 uppercase font-bold">{money.toLocaleString()} GOLD</span>
-            {fps !== undefined && (
-              <span className={`text-[10px] font-mono ${fps >= 50 ? 'text-green-400' : fps >= 30 ? 'text-yellow-400' : 'text-red-400'}`}>
-                {fps} FPS
-              </span>
-            )}
         </div>
       </div>
 

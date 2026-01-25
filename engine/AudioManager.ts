@@ -120,14 +120,14 @@ export class AudioManager {
 
   private loadTracks() {
     const trackFiles: Record<MusicCategory, string[]> = {
-      menu: ['/music/menu.mp3', '/music/menu2.mp3'],
-      battle: ['/music/battle.mp3', '/music/battle2.mp3', '/music/battle3.mp3'],
-      town: ['/music/town.mp3', '/music/town2.mp3'],
-      boss: ['/music/boss.mp3', '/music/boss2.mp3'],
-      explore: ['/music/explore.mp3', '/music/explore2.mp3'],
-      dragon: ['/music/dragon.mp3', '/music/dragon2.mp3'],
-      siege: ['/music/siege.mp3', '/music/siege2.mp3'],
-      victory: ['/music/victory.mp3']
+      menu: ['/music/menu.opus', '/music/menu2.opus'],
+      battle: ['/music/battle.opus', '/music/battle2.opus', '/music/battle3.opus'],
+      town: ['/music/town.opus', '/music/town2.opus'],
+      boss: ['/music/boss.opus', '/music/boss2.opus'],
+      explore: ['/music/explore.opus', '/music/explore2.opus'],
+      dragon: ['/music/dragon.opus', '/music/dragon2.opus'],
+      siege: ['/music/siege.opus', '/music/siege2.opus'],
+      victory: ['/music/victory.opus']
     };
 
     Object.entries(trackFiles).forEach(([category, paths]) => {
@@ -146,42 +146,42 @@ export class AudioManager {
   private loadSfx() {
     const sfxFiles: Record<SfxCategory, string[]> = {
       // Combat
-      slash: ['/sfx/slash1.mp3', '/sfx/slash2.mp3', '/sfx/slash3.mp3'],
-      hit: ['/sfx/hit1.mp3', '/sfx/hit2.mp3'],
-      death: ['/sfx/death1.mp3', '/sfx/death2.mp3'],
+      slash: ['/sfx/slash1.opus', '/sfx/slash2.opus', '/sfx/slash3.opus'],
+      hit: ['/sfx/hit1.opus', '/sfx/hit2.opus'],
+      death: ['/sfx/death1.opus', '/sfx/death2.opus'],
 
       // Magic elements
-      fire: ['/sfx/fire1.mp3', '/sfx/fire2.mp3'],
-      ice: ['/sfx/ice1.mp3', '/sfx/ice2.mp3'],
-      lightning: ['/sfx/lightning1.mp3', '/sfx/lightning2.mp3'],
-      poison: ['/sfx/poison1.mp3'],
-      heal: ['/sfx/heal1.mp3', '/sfx/heal2.mp3'],
-      dark: ['/sfx/dark1.mp3', '/sfx/dark2.mp3'],
+      fire: ['/sfx/fire1.opus', '/sfx/fire2.opus'],
+      ice: ['/sfx/ice1.opus', '/sfx/ice2.opus'],
+      lightning: ['/sfx/lightning1.opus', '/sfx/lightning2.opus'],
+      poison: ['/sfx/poison1.opus'],
+      heal: ['/sfx/heal1.opus', '/sfx/heal2.opus'],
+      dark: ['/sfx/dark1.opus', '/sfx/dark2.opus'],
 
       // Dragon
-      dragonRoar: ['/sfx/dragon_roar1.mp3', '/sfx/dragon_roar2.mp3'],
-      dragonBreath: ['/sfx/dragon_breath1.mp3', '/sfx/dragon_breath2.mp3'],
+      dragonRoar: ['/sfx/dragon_roar1.opus', '/sfx/dragon_roar2.opus'],
+      dragonBreath: ['/sfx/dragon_breath1.opus', '/sfx/dragon_breath2.opus'],
 
       // Movement/abilities
-      dash: ['/sfx/dash1.mp3', '/sfx/dash2.mp3'],
-      teleport: ['/sfx/teleport1.mp3'],
-      powerup: ['/sfx/powerup1.mp3'],
-      levelup: ['/sfx/levelup1.mp3'],
+      dash: ['/sfx/dash1.opus', '/sfx/dash2.opus'],
+      teleport: ['/sfx/teleport1.opus'],
+      powerup: ['/sfx/powerup1.opus'],
+      levelup: ['/sfx/levelup1.opus'],
 
       // Explosions
-      explosion: ['/sfx/explosion1.mp3', '/sfx/explosion2.mp3'],
-      fireball: ['/sfx/fireball1.mp3', '/sfx/fireball2.mp3'],
+      explosion: ['/sfx/explosion1.opus', '/sfx/explosion2.opus'],
+      fireball: ['/sfx/fireball1.opus', '/sfx/fireball2.opus'],
 
       // Alerts/events
-      horn: ['/sfx/horn1.mp3', '/sfx/horn2.mp3'],
-      fanfare: ['/sfx/fanfare1.mp3'],
+      horn: ['/sfx/horn1.opus', '/sfx/horn2.opus'],
+      fanfare: ['/sfx/fanfare1.opus'],
 
       // UI/items
-      coin: ['/sfx/coin1.mp3', '/sfx/coin2.mp3'],
-      pickup: ['/sfx/pickup1.mp3'],
-      error: ['/sfx/error1.mp3'],
-      mount: ['/sfx/mount1.mp3'],
-      dismount: ['/sfx/dismount1.mp3'],
+      coin: ['/sfx/coin1.opus', '/sfx/coin2.opus'],
+      pickup: ['/sfx/pickup1.opus'],
+      error: ['/sfx/error1.opus'],
+      mount: ['/sfx/mount1.opus'],
+      dismount: ['/sfx/dismount1.opus'],
     };
 
     const poolSize = 4; // Allow 4 concurrent plays per sfx

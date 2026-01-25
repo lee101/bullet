@@ -276,10 +276,10 @@ async function main() {
 
     if (buffer) {
       const dir = prompt.category === 'terrain' ? TILED_DIR : OUTPUT_DIR;
-      writeFileSync(join(dir, `${prompt.id}.png`), buffer);
+      writeFileSync(join(dir, `${prompt.id}.webp`), buffer);
       progress.completed.push(prompt.id);
       successCount++;
-      console.log(`  saved ${prompt.id}.png`);
+      console.log(`  saved ${prompt.id}.webp`);
     } else {
       progress.failed.push(prompt.id);
       console.log(`  FAILED ${prompt.id}`);

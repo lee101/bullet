@@ -96,17 +96,17 @@ class AssetManager {
       if (category === 'characters') {
         for (const charId of names) {
           promises.push(
-            loadImage(`${GENERATED_PATH}/char_${charId}_portrait.png`).then(img => {
+            loadImage(`${GENERATED_PATH}/char_${charId}_portrait.webp`).then(img => {
               this.assets.characters.portraits[charId] = img;
             })
           );
           promises.push(
-            loadImage(`${GENERATED_PATH}/char_${charId}_sprite.png`).then(img => {
+            loadImage(`${GENERATED_PATH}/char_${charId}_sprite.webp`).then(img => {
               this.assets.characters.sprites[charId] = img;
             })
           );
           promises.push(
-            loadImage(`${GENERATED_PATH}/char_${charId}_icon.png`).then(img => {
+            loadImage(`${GENERATED_PATH}/char_${charId}_icon.webp`).then(img => {
               this.assets.characters.icons[charId] = img;
             })
           );
@@ -120,8 +120,8 @@ class AssetManager {
             else if (category === 'terrain') prefix = 'terrain';
             else prefix = 'decor';
             // Try tiled version first for terrain, fall back to generated
-            const tiledSrc = `${TILED_PATH}/${prefix}_${name}.png`;
-            const genSrc = `${GENERATED_PATH}/${prefix}_${name}.png`;
+            const tiledSrc = `${TILED_PATH}/${prefix}_${name}.webp`;
+            const genSrc = `${GENERATED_PATH}/${prefix}_${name}.webp`;
             promises.push(
               loadImage(category === 'terrain' ? tiledSrc : genSrc).then(img => {
                 if (img.width === 0 && category === 'terrain') {
@@ -151,12 +151,12 @@ class AssetManager {
     const magicElements = ['fire', 'ice', 'lightning', 'earth', 'black', 'cure', 'blood', 'lumin'];
     for (const el of magicElements) {
       promises.push(
-        loadImage(`${MAGIC_PATH}/orb_${el}.png`).then(img => {
+        loadImage(`${MAGIC_PATH}/orb_${el}.webp`).then(img => {
           this.assets.magic[`orb_${el}`] = img;
         })
       );
       promises.push(
-        loadImage(`${MAGIC_PATH}/proj_${el}.png`).then(img => {
+        loadImage(`${MAGIC_PATH}/proj_${el}.webp`).then(img => {
           this.assets.magic[`proj_${el}`] = img;
         })
       );

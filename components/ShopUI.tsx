@@ -6,19 +6,19 @@ import { InputManager } from '../engine/InputManager';
 
 // Shopkeeper portraits - replace with FLUX 4B generated images
 const SHOPKEEPER_PORTRAITS: Record<number, string> = {
-  1: '/assets/shopkeeper/merchant_basic.png',
-  2: '/assets/shopkeeper/merchant_prosperous.png',
-  3: '/assets/shopkeeper/merchant_wealthy.png',
-  4: '/assets/shopkeeper/merchant_legendary.png',
+  1: '/assets/shopkeeper/merchant_basic.webp',
+  2: '/assets/shopkeeper/merchant_prosperous.webp',
+  3: '/assets/shopkeeper/merchant_wealthy.webp',
+  4: '/assets/shopkeeper/merchant_legendary.webp',
 };
 
 // Item category art backgrounds
 const CATEGORY_ART: Record<string, string> = {
-  WEAPON: '/assets/shop/weapons_banner.png',
-  ARMOR: '/assets/shop/armor_banner.png',
-  MAGIC: '/assets/shop/magic_banner.png',
-  SPELL: '/assets/shop/spells_banner.png',
-  UTILITY: '/assets/shop/utility_banner.png',
+  WEAPON: '/assets/shop/weapons_banner.webp',
+  ARMOR: '/assets/shop/armor_banner.webp',
+  MAGIC: '/assets/shop/magic_banner.webp',
+  SPELL: '/assets/shop/spells_banner.webp',
+  UTILITY: '/assets/shop/utility_banner.webp',
 };
 
 interface ShopUIProps {

@@ -12,10 +12,10 @@ async function makeTileableMirror(inputPath: string, outputPath: string) {
   const h = meta.height!;
 
   // Get all 4 orientations
-  const original = await sharp(inputPath).png().toBuffer();
-  const flippedH = await sharp(inputPath).flop().png().toBuffer();
-  const flippedV = await sharp(inputPath).flip().png().toBuffer();
-  const flippedBoth = await sharp(inputPath).flip().flop().png().toBuffer();
+  const original = await sharp(inputPath).webp({ quality: 85 }).toBuffer();
+  const flippedH = await sharp(inputPath).flop().webp({ quality: 85 }).toBuffer();
+  const flippedV = await sharp(inputPath).flip().webp({ quality: 85 }).toBuffer();
+  const flippedBoth = await sharp(inputPath).flip().flop().webp({ quality: 85 }).toBuffer();
 
   // Composite into 2x2 grid
   const compositeBuffer = await sharp({
@@ -32,7 +32,7 @@ async function makeTileableMirror(inputPath: string, outputPath: string) {
       { input: flippedV, top: h, left: 0 },
       { input: flippedBoth, top: h, left: w },
     ])
-    .png()
+    .webp({ quality: 85 })
     .toBuffer();
 
   // Extract center region (guaranteed to tile)
@@ -43,7 +43,7 @@ async function makeTileableMirror(inputPath: string, outputPath: string) {
       width: w,
       height: h
     })
-    .png()
+    .webp({ quality: 85 })
     .toFile(outputPath);
 
   console.log(`  Tiled: ${outputPath}`);
@@ -54,7 +54,7 @@ async function main() {
     mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  const files = readdirSync(INPUT_DIR).filter(f => f.startsWith('terrain_') && f.endsWith('.png'));
+  const files = readdirSync(INPUT_DIR).filter(f => f.startsWith('terrain_') && f.endsWith('.webp'));
 
   if (files.length === 0) {
     console.log('No terrain textures found in', INPUT_DIR);

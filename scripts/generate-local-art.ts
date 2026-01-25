@@ -503,8 +503,8 @@ async function main() {
     const canvas = createCanvas(256, 256);
     const ctx = canvas.getContext('2d');
     drawTerrain(ctx, 256, PALETTES[terrain as keyof typeof PALETTES] || PALETTES.grass);
-    writeFileSync(join(TILED_DIR, `terrain_${terrain}.png`), canvas.toBuffer('image/png'));
-    console.log(`  terrain_${terrain}.png`);
+    writeFileSync(join(TILED_DIR, `terrain_${terrain}.webp`), canvas.toBuffer('image/png'));
+    console.log(`  terrain_${terrain}.webp`);
   }
 
   // Decor
@@ -514,8 +514,8 @@ async function main() {
     const canvas = createCanvas(size, size);
     const ctx = canvas.getContext('2d');
     drawDecor(ctx, size, decor);
-    writeFileSync(join(OUTPUT_DIR, `decor_${decor}.png`), canvas.toBuffer('image/png'));
-    console.log(`  decor_${decor}.png`);
+    writeFileSync(join(OUTPUT_DIR, `decor_${decor}.webp`), canvas.toBuffer('image/png'));
+    console.log(`  decor_${decor}.webp`);
   }
 
   // Cities
@@ -524,8 +524,8 @@ async function main() {
     const canvas = createCanvas(512, 512);
     const ctx = canvas.getContext('2d');
     drawCity(ctx, 512, style);
-    writeFileSync(join(OUTPUT_DIR, `city_${style}.png`), canvas.toBuffer('image/png'));
-    console.log(`  city_${style}.png`);
+    writeFileSync(join(OUTPUT_DIR, `city_${style}.webp`), canvas.toBuffer('image/png'));
+    console.log(`  city_${style}.webp`);
   }
 
   // Character assets
@@ -533,17 +533,17 @@ async function main() {
     // Portrait
     const pCanvas = createCanvas(512, 512);
     drawCharacterPortrait(pCanvas.getContext('2d'), 512, colors);
-    writeFileSync(join(OUTPUT_DIR, `char_${charId}_portrait.png`), pCanvas.toBuffer('image/png'));
+    writeFileSync(join(OUTPUT_DIR, `char_${charId}_portrait.webp`), pCanvas.toBuffer('image/png'));
 
     // Sprite
     const sCanvas = createCanvas(256, 256);
     drawCharacterSprite(sCanvas.getContext('2d'), 256, colors);
-    writeFileSync(join(OUTPUT_DIR, `char_${charId}_sprite.png`), sCanvas.toBuffer('image/png'));
+    writeFileSync(join(OUTPUT_DIR, `char_${charId}_sprite.webp`), sCanvas.toBuffer('image/png'));
 
     // Icon
     const iCanvas = createCanvas(64, 64);
     drawCharacterIcon(iCanvas.getContext('2d'), 64, colors);
-    writeFileSync(join(OUTPUT_DIR, `char_${charId}_icon.png`), iCanvas.toBuffer('image/png'));
+    writeFileSync(join(OUTPUT_DIR, `char_${charId}_icon.webp`), iCanvas.toBuffer('image/png'));
 
     console.log(`  char_${charId} (portrait, sprite, icon)`);
   }
@@ -556,8 +556,8 @@ async function main() {
     const canvas = createCanvas(size, size);
     const ctx = canvas.getContext('2d');
     drawEffect(ctx, size, effect);
-    writeFileSync(join(OUTPUT_DIR, `${effect}.png`), canvas.toBuffer('image/png'));
-    console.log(`  ${effect}.png`);
+    writeFileSync(join(OUTPUT_DIR, `${effect}.webp`), canvas.toBuffer('image/png'));
+    console.log(`  ${effect}.webp`);
   }
 
   console.log('Done! Generated all placeholder art.');

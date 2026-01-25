@@ -636,9 +636,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         ctx.fillStyle = style.color;
         ctx.beginPath(); ctx.arc(town.pos.x, town.pos.y, 70, 0, Math.PI*2); ctx.fill();
 
-        if (cityImg && cityImg.width > 0) {
-          ctx.drawImage(cityImg, town.pos.x - 80, town.pos.y - 80, 160, 160);
-        }
         ctx.fillStyle = 'white'; ctx.font = '12px Orbitron'; ctx.textAlign = 'center';
         ctx.fillText(town.name, town.pos.x, town.pos.y - 85);
         ctx.fillText(`[${getButtonPrompt('interact')}] SHOP`, town.pos.x, town.pos.y - 70);

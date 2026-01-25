@@ -131,14 +131,22 @@ export class GameEngine {
   // Shadow state for instant restart
   private shadowWorld: WorldGenerator | null = null;
   private shadowReady = false;
+  private shadowPromise: Promise<void> | null = null;
   private lastPlayerCount = 1;
 
-  public reset() {
-    // Use pre-built shadow state if available
+  public get isReady(): boolean { return this.shadowReady; }
+
+  public async reset(): Promise<void> {
+    // Wait for shadow world if being prepared
+    if (this.shadowPromise && !this.shadowReady) {
+      await this.shadowPromise;
+    }
+
     if (this.shadowReady && this.shadowWorld) {
       this.world = this.shadowWorld;
       this.shadowWorld = null;
       this.shadowReady = false;
+      this.shadowPromise = null;
     } else {
       this.world = new WorldGenerator();
     }
@@ -181,17 +189,28 @@ export class GameEngine {
     this.wheelInputCooldowns = [];
     this.magicProjectiles = [];
     this.camera = { x: WORLD_WIDTH / 2 - window.innerWidth / 2, y: WORLD_HEIGHT / 2 - window.innerHeight / 2 };
+    this.input.clearPlayerInputMappings();
+
+    // Start preparing next world immediately
+    this.prepareNextWorld();
   }
 
   // Pre-build next world in background for instant restart
   private prepareNextWorld() {
-    if (this.shadowReady) return;
-    setTimeout(() => {
-      this.shadowWorld = new WorldGenerator();
-      for (let i = 0; i < 10; i++) this.shadowWorld.getSpawnablePosition();
-      this.shadowReady = true;
-      console.log('Shadow world ready');
-    }, 0);
+    if (this.shadowReady || this.shadowPromise) return;
+    this.shadowPromise = new Promise(resolve => {
+      const doWork = () => {
+        this.shadowWorld = new WorldGenerator();
+        for (let i = 0; i < 10; i++) this.shadowWorld.getSpawnablePosition();
+        this.shadowReady = true;
+        resolve();
+      };
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(doWork, { timeout: 100 });
+      } else {
+        setTimeout(doWork, 0);
+      }
+    });
   }
 
   // Pre-warm the engine while in menu for faster game start
@@ -225,6 +244,7 @@ export class GameEngine {
     const spawn = this.world.getSpawnablePosition();
     const count = Math.max(1, Math.min(4, selections.length));
     this.lastPlayerCount = count;
+    this.input.clearPlayerInputMappings();
 
     for (let i = 0; i < count; i++) {
       const sel = selections[i];
@@ -252,6 +272,7 @@ export class GameEngine {
       this.playerCityHealCooldowns.push(0);
       this.magicWheels.push(new MagicWheel());
       this.wheelInputCooldowns.push(0);
+      this.input.setPlayerInputMapping(i, sel.inputType, sel.controllerId);
     }
 
     this.campfires = this.world.getCampfires();
@@ -301,6 +322,7 @@ export class GameEngine {
     this.playerCityHealCooldowns.push(0);
     this.magicWheels.push(new MagicWheel());
     this.wheelInputCooldowns.push(0);
+    this.input.setPlayerInputMapping(i, inputType, controllerId);
     return i;
   }
 
@@ -311,6 +333,7 @@ export class GameEngine {
     this.playerCityHealCooldowns.splice(playerIndex, 1);
     this.magicWheels.splice(playerIndex, 1);
     this.wheelInputCooldowns.splice(playerIndex, 1);
+    this.input.removePlayerInputMapping(playerIndex);
     this.players.forEach((p, i) => p.id = i);
   }
 
@@ -637,7 +660,7 @@ export class GameEngine {
       }
 
       // Dismount with R when already mounted
-      if (this.input.isRevivePressed(i) && p.mount && p.mountId !== null) {
+      else if (this.input.isRevivePressed(i) && p.mount && p.mountId !== null) {
           const mount = this.mounts.find(m => m.id === p.mountId);
           if (mount) {
             mount.riders = mount.riders.filter(r => r !== i);
@@ -1640,11 +1663,10 @@ export class GameEngine {
       }
 
       if (!e.isAggressive) {
-        // Wildlife simulation: predators hunt prey
+        // Wildlife simulation: predators hunt prey - use spatial hash
         if (e.type === 'WOLF' && this.frameCount % 60 === 0) {
-          const prey = this.enemies.find(other =>
-            other.type === 'DEER' && this.distSq(e.pos, other.pos) < 500*500
-          );
+          const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 500);
+          const prey = nearby.find(other => other.type === 'DEER');
           if (prey) {
             const dx = prey.pos.x - e.pos.x, dy = prey.pos.y - e.pos.y;
             const d = Math.sqrt(dx*dx + dy*dy);
@@ -1656,11 +1678,10 @@ export class GameEngine {
           }
         }
 
-        // Deer flee from nearby threats
+        // Deer flee from nearby threats - use spatial hash
         if (e.type === 'DEER') {
-          const threat = this.enemies.find(other =>
-            (other.type === 'WOLF' || other.isAggressive) && this.distSq(e.pos, other.pos) < 400*400
-          );
+          const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 400);
+          const threat = nearby.find(other => other.type === 'WOLF' || other.isAggressive);
           if (threat) {
             const dx = e.pos.x - threat.pos.x, dy = e.pos.y - threat.pos.y;
             const d = Math.sqrt(dx*dx + dy*dy);
@@ -1750,14 +1771,15 @@ export class GameEngine {
         return;
       }
 
-      // Pack behavior: Wolves and swarm move together
+      // Pack behavior: Wolves and swarm move together - use spatial hash
       if ((e.type === 'WOLF' || e.type === 'SWARM') && this.frameCount % 5 === 0) {
         let packCenterX = 0, packCenterY = 0, packCount = 0;
-        this.enemies.forEach(other => {
-          if (other.type === e.type && other.id !== e.id && this.distSq(e.pos, other.pos) < 300*300) {
+        const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 300);
+        for (const other of nearby) {
+          if (other.type === e.type && other.id !== e.id) {
             packCenterX += other.pos.x; packCenterY += other.pos.y; packCount++;
           }
-        });
+        }
         if (packCount > 0) {
           packCenterX /= packCount; packCenterY /= packCount;
           const toPackX = packCenterX - e.pos.x, toPackY = packCenterY - e.pos.y;
@@ -1769,13 +1791,12 @@ export class GameEngine {
         }
       }
 
-      // Alert propagation: Alerted enemies alert nearby passive ones
+      // Alert propagation: Alerted enemies alert nearby passive ones - use spatial hash
       if (e.isAggressive && this.frameCount % 30 === 0) {
-        this.enemies.forEach(other => {
-          if (!other.isAggressive && this.distSq(e.pos, other.pos) < 400*400) {
-            other.isAggressive = true;
-          }
-        });
+        const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 400);
+        for (const other of nearby) {
+          if (!other.isAggressive) other.isAggressive = true;
+        }
       }
 
       e.pos.x += (dx/d)*e.speed; e.pos.y += (dy/d)*e.speed;
@@ -1799,11 +1820,10 @@ export class GameEngine {
                   this.players[i].hp -= 80;
                 }
               });
-              this.enemies.forEach(other => {
-                if (other.id !== e.id && this.distSq(e.pos, other.pos) < 120*120) {
-                  other.hp -= 40;
-                }
-              });
+              const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 120);
+              for (const other of nearby) {
+                if (other.id !== e.id) other.hp -= 40;
+              }
             }
 
             if (e.type === 'SPLITTER') {
@@ -2127,22 +2147,22 @@ export class GameEngine {
 
       case 'HEALER': {
         if (this.frameCount % 60 === 0) {
-          this.enemies.forEach(other => {
-            if (other.id !== e.id && this.distSq(e.pos, other.pos) < 180*180) {
+          const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 180);
+          for (const other of nearby) {
+            if (other.id !== e.id) {
               other.hp = Math.min(other.maxHp, other.hp + 8);
               this.createExplosion(other.pos, '#66ff99', 3, 1, 2);
             }
-          });
+          }
         }
         break;
       }
 
       case 'SHIELDER': {
-        this.enemies.forEach(other => {
-          if (other.id !== e.id && this.distSq(e.pos, other.pos) < 150*150) {
-            other.shieldActive = true;
-          }
-        });
+        const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 150);
+        for (const other of nearby) {
+          if (other.id !== e.id) other.shieldActive = true;
+        }
         break;
       }
 
@@ -2230,15 +2250,17 @@ export class GameEngine {
   private updateAttacks() {
     this.bullets.forEach(b => {
       b.pos.x += b.vel.x; b.pos.y += b.vel.y; b.life--;
-      // Player, tower, and ally bullets hit enemies
+      // Player, tower, and ally bullets hit enemies - use spatial hash
       if (b.playerId >= 0 || b.playerId === -1 || b.playerId === -3) {
-        this.enemies.forEach(e => {
+        const nearby = this.enemySpatialHash.getNearby(b.pos.x, b.pos.y, b.radius + 80);
+        for (const e of nearby) {
+          if (b.life <= 0) break;
           if (this.distSq(b.pos, e.pos) < (b.radius + e.radius)**2) {
             e.hp -= b.damage; e.isAggressive = true;
             this.addDamageNumber(e.pos, b.damage, false);
             b.life = 0;
           }
-        });
+        }
       }
       // Enemy bullets hit players and allies
       if (b.playerId === -2) {

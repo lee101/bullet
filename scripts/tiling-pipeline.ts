@@ -32,9 +32,9 @@ const TERRAIN_TILES: TileConfig[] = [
 
 // Analyze seam quality - lower is better
 async function measureSeamCost(img: Buffer, w: number, h: number): Promise<number> {
-  const { data } = await sharp(img).raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(img).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let cost = 0;
-  const channels = 4;
+  const channels = info.channels;
 
   // horizontal seam (left edge vs right edge)
   for (let y = 0; y < h; y++) {
@@ -97,10 +97,10 @@ async function mirrorFold(srcBuffer: Buffer): Promise<Buffer> {
   const w = meta.width!;
   const h = meta.height!;
 
-  const original = await sharp(srcBuffer).png().toBuffer();
-  const flippedH = await sharp(srcBuffer).flop().png().toBuffer();
-  const flippedV = await sharp(srcBuffer).flip().png().toBuffer();
-  const flippedBoth = await sharp(srcBuffer).flip().flop().png().toBuffer();
+  const original = await sharp(srcBuffer).webp().toBuffer();
+  const flippedH = await sharp(srcBuffer).flop().webp().toBuffer();
+  const flippedV = await sharp(srcBuffer).flip().webp().toBuffer();
+  const flippedBoth = await sharp(srcBuffer).flip().flop().webp().toBuffer();
 
   const composite = await sharp({
     create: { width: w * 2, height: h * 2, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 255 } }
@@ -111,7 +111,7 @@ async function mirrorFold(srcBuffer: Buffer): Promise<Buffer> {
       { input: flippedV, top: h, left: 0 },
       { input: flippedBoth, top: h, left: w },
     ])
-    .png()
+    .webp()
     .toBuffer();
 
   return sharp(composite)
@@ -124,9 +124,10 @@ async function edgeBlend(srcBuffer: Buffer, blendPx: number = 16): Promise<Buffe
   const meta = await sharp(srcBuffer).metadata();
   const w = meta.width!;
   const h = meta.height!;
-  const { data } = await sharp(srcBuffer).raw().toBuffer({ resolveWithObject: true });
+  // ensure 4 channels
+  const { data, info } = await sharp(srcBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const out = Buffer.from(data);
-  const ch = 4;
+  const ch = info.channels;
 
   // blend left<->right edges
   for (let y = 0; y < h; y++) {
@@ -156,7 +157,7 @@ async function edgeBlend(srcBuffer: Buffer, blendPx: number = 16): Promise<Buffe
     }
   }
 
-  return sharp(out, { raw: { width: w, height: h, channels: ch } }).png().toBuffer();
+  return sharp(out, { raw: { width: w, height: h, channels: 4 } }).webp().toBuffer();
 }
 
 // Generate with seamless LoRA
@@ -215,7 +216,7 @@ async function processTile(cfg: TileConfig): Promise<void> {
   }
 
   // save raw for debugging
-  writeFileSync(join(OUTPUT_DIR, `${cfg.name}_raw.png`), raw);
+  writeFileSync(join(OUTPUT_DIR, `${cfg.name}_raw.webp`), raw);
 
   // 2. find best tileable subset
   console.log(`  finding best ${cfg.size}x${cfg.size} subset...`);
@@ -239,25 +240,25 @@ async function processTile(cfg: TileConfig): Promise<void> {
   processed = await edgeBlend(processed, 8);
 
   // 6. save final
-  const finalPath = join(OUTPUT_DIR, `terrain_${cfg.name}.png`);
+  const finalPath = join(OUTPUT_DIR, `terrain_${cfg.name}.webp`);
   writeFileSync(finalPath, processed);
   console.log(`  saved: ${finalPath}`);
 
   // 7. generate flipped variants if allowed
   if (cfg.flipH) {
     const flipH = await sharp(processed).flop().toBuffer();
-    writeFileSync(join(OUTPUT_DIR, `terrain_${cfg.name}_fliph.png`), flipH);
+    writeFileSync(join(OUTPUT_DIR, `terrain_${cfg.name}_fliph.webp`), flipH);
   }
   if (cfg.flipV) {
     const flipV = await sharp(processed).flip().toBuffer();
-    writeFileSync(join(OUTPUT_DIR, `terrain_${cfg.name}_flipv.png`), flipV);
+    writeFileSync(join(OUTPUT_DIR, `terrain_${cfg.name}_flipv.webp`), flipV);
   }
 }
 
 // Generate transition tiles (A -> B gradient)
 async function generateTransition(from: string, to: string): Promise<void> {
-  const fromPath = join(OUTPUT_DIR, `terrain_${from}.png`);
-  const toPath = join(OUTPUT_DIR, `terrain_${to}.png`);
+  const fromPath = join(OUTPUT_DIR, `terrain_${from}.webp`);
+  const toPath = join(OUTPUT_DIR, `terrain_${to}.webp`);
 
   if (!existsSync(fromPath) || !existsSync(toPath)) {
     console.log(`  skip transition ${from}->${to}: missing base tiles`);
@@ -282,8 +283,8 @@ async function generateTransition(from: string, to: string): Promise<void> {
     }
   }
 
-  const transPath = join(OUTPUT_DIR, `trans_${from}_${to}_h.png`);
-  await sharp(out, { raw: { width: w, height: h, channels: ch } }).png().toFile(transPath);
+  const transPath = join(OUTPUT_DIR, `trans_${from}_${to}_h.webp`);
+  await sharp(out, { raw: { width: w, height: h, channels: ch } }).webp().toFile(transPath);
   console.log(`  transition: ${transPath}`);
 
   // vertical gradient
@@ -298,8 +299,8 @@ async function generateTransition(from: string, to: string): Promise<void> {
     }
   }
 
-  const transPathV = join(OUTPUT_DIR, `trans_${from}_${to}_v.png`);
-  await sharp(outV, { raw: { width: w, height: h, channels: ch } }).png().toFile(transPathV);
+  const transPathV = join(OUTPUT_DIR, `trans_${from}_${to}_v.webp`);
+  await sharp(outV, { raw: { width: w, height: h, channels: ch } }).webp().toFile(transPathV);
   console.log(`  transition: ${transPathV}`);
 }
 

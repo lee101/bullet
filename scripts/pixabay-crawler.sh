@@ -4,7 +4,7 @@
 
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 BASE_URL="https://pixabay.com"
-OUTPUT_DIR="assets/music"
+OUTPUT_DIR="public/music"
 
 download_music() {
     local search_term="$1"
@@ -52,10 +52,11 @@ mkdir -p "$OUTPUT_DIR"
 echo "=== Pixabay Music Crawler ==="
 echo ""
 
-download_music "fantasy%20battle%20epic" "battle" 1
-download_music "fantasy%20menu%20calm" "menu" 1
-download_music "fantasy%20town%20medieval" "town" 1
-download_music "epic%20boss%20orchestral" "boss" 1
+download_music "adventure%20exploration%20calm" "explore" 2
+download_music "fantasy%20battle%20epic" "battle" 2
+download_music "medieval%20tavern%20town" "town" 1
+download_music "epic%20boss%20orchestral%20intense" "boss" 1
+download_music "fantasy%20menu%20ambient" "menu" 1
 
 echo ""
 echo "=== Download complete ==="

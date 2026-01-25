@@ -56,19 +56,18 @@ class PerlinNoise {
     );
   }
 
-  // Fractal Brownian Motion - multiple octaves for natural terrain
-  fbm(x: number, y: number, octaves: number = 6, lacunarity: number = 2, persistence: number = 0.5): number {
-    let value = 0;
-    let amplitude = 1;
-    let frequency = 1;
-    let maxValue = 0;
-    for (let i = 0; i < octaves; i++) {
-      value += amplitude * this.noise2D(x * frequency, y * frequency);
-      maxValue += amplitude;
-      amplitude *= persistence;
-      frequency *= lacunarity;
-    }
-    return value / maxValue;
+  // Optimized FBM with inlined constants
+  fbm(x: number, y: number, octaves: number = 4): number {
+    let value = this.noise2D(x, y);
+    if (octaves < 2) return value;
+    let amp = 0.5, freq = 2, max = 1.5;
+    value += amp * this.noise2D(x * freq, y * freq);
+    if (octaves < 3) return value / max;
+    amp = 0.25; freq = 4; max = 1.75;
+    value += amp * this.noise2D(x * freq, y * freq);
+    if (octaves < 4) return value / max;
+    value += 0.125 * this.noise2D(x * 8, y * 8);
+    return value / 1.875;
   }
 }
 
@@ -109,51 +108,46 @@ export class WorldGenerator {
   }
 
   private generate() {
-    // Generate base terrain with FBM
+    // Pre-compute for speed
+    const invCols = 1 / this.cols;
+    const invRows = 1 / this.rows;
+
+    // Generate base terrain with FBM - optimized
     for (let x = 0; x < this.cols; x++) {
+      const nx = x * invCols;
+      const dx = (nx - 0.5) * 2;
+      const dx2 = dx * dx;
+
       for (let y = 0; y < this.rows; y++) {
-        const nx = x / this.cols;
-        const ny = y / this.rows;
-
-        // Distance from center for island falloff
-        const dx = (nx - 0.5) * 2;
+        const ny = y * invRows;
         const dy = (ny - 0.5) * 2;
-        const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+        const distSq = dx2 + dy * dy;
 
-        // Multi-octave noise for terrain
-        let height = this.noise.fbm(nx * 4, ny * 4, 6, 2, 0.5);
-        height = (height + 1) * 0.5; // Normalize to 0-1
+        // Reduced octaves for speed: 4 instead of 6
+        let height = this.noise.fbm(nx * 4, ny * 4, 4);
+        height = (height + 1) * 0.5;
 
-        // Island falloff - creates oceans around edges
-        const falloff = 1 - Math.pow(distFromCenter, 1.5);
-        height = height * falloff;
+        // Fast falloff approximation
+        const falloff = Math.max(0, 1 - distSq * distSq);
+        height *= falloff;
 
-        // Add some continental ridges
-        const ridgeNoise = Math.abs(this.noise.fbm(nx * 2, ny * 2, 4));
+        // Reduced ridge octaves: 2 instead of 4
+        const ridgeNoise = Math.abs(this.noise.fbm(nx * 2, ny * 2, 2));
         height += ridgeNoise * 0.15;
 
-        // Moisture for biome determination
-        const moisture = (this.moistureNoise.fbm(nx * 3, ny * 3, 4) + 1) * 0.5;
+        // Reduced moisture octaves: 2 instead of 4
+        const moisture = (this.moistureNoise.fbm(nx * 3, ny * 3, 2) + 1) * 0.5;
 
         const idx = y * this.cols + x;
-        this.heightMap[idx] = Math.max(0, Math.min(1, height));
+        this.heightMap[idx] = height < 0 ? 0 : height > 1 ? 1 : height;
         this.moistureMap[idx] = moisture;
       }
     }
 
-    // Place towns in suitable locations (grass/lowland, not too close together)
     this.placeTowns();
-
-    // Carve mountain ranges around towns
     this.carveMountainRanges();
-
-    // Generate rivers from mountains to sea
     this.generateRivers();
-
-    // Place campfires throughout the world
     this.placeCampfires();
-
-    // Place torches around town entrances
     this.placeTorches();
   }
 
@@ -563,6 +557,6 @@ export class WorldGenerator {
 
   // Get procedural detail noise for a position (for adding variation within tiles)
   public getDetailNoise(worldX: number, worldY: number, scale: number = 0.1): number {
-    return this.noise.fbm(worldX * scale, worldY * scale, 3, 2, 0.5);
+    return this.noise.fbm(worldX * scale, worldY * scale, 3);
   }
 }

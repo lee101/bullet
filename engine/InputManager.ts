@@ -1,9 +1,15 @@
 
+import { InputType } from '../types';
+
+type PlayerInputMapping = { inputType: InputType; controllerId: number | null };
+type KeyboardScheme = 'WASD' | 'ARROWS';
+
 export class InputManager {
   private keys: Set<string> = new Set();
   private uiNavCooldown: number = 0;
   private prevButtonStates: Map<number, boolean[]> = new Map();
   private controllerCallbacks: { connected: ((idx: number) => void)[]; disconnected: ((idx: number) => void)[] } = { connected: [], disconnected: [] };
+  private playerInputMap: Map<number, PlayerInputMapping> = new Map();
 
   constructor() {
     window.addEventListener('keydown', (e) => this.keys.add(e.code));
@@ -22,6 +28,46 @@ export class InputManager {
 
   public onControllerDisconnected(callback: (index: number) => void): void {
     this.controllerCallbacks.disconnected.push(callback);
+  }
+
+  public setPlayerInputMapping(playerIndex: number, inputType: InputType, controllerId: number | null): void {
+    this.playerInputMap.set(playerIndex, { inputType, controllerId });
+  }
+
+  public removePlayerInputMapping(playerIndex: number): void {
+    if (!this.playerInputMap.size) return;
+    const updated = new Map<number, PlayerInputMapping>();
+    for (const [idx, mapping] of this.playerInputMap.entries()) {
+      if (idx < playerIndex) updated.set(idx, mapping);
+      else if (idx > playerIndex) updated.set(idx - 1, mapping);
+    }
+    this.playerInputMap = updated;
+  }
+
+  public clearPlayerInputMappings(): void {
+    this.playerInputMap.clear();
+  }
+
+  private getKeyboardScheme(playerIndex: number): KeyboardScheme | null {
+    const mapping = this.playerInputMap.get(playerIndex);
+    if (mapping) {
+      if (mapping.inputType === 'KEYBOARD_WASD') return 'WASD';
+      if (mapping.inputType === 'KEYBOARD_ARROWS') return 'ARROWS';
+      return null;
+    }
+    if (playerIndex === 0) return 'WASD';
+    if (playerIndex === 1) return 'ARROWS';
+    return null;
+  }
+
+  private getGamepadForPlayer(playerIndex: number): Gamepad | null {
+    const mapping = this.playerInputMap.get(playerIndex);
+    if (mapping) {
+      if (mapping.inputType !== 'GAMEPAD') return null;
+      if (mapping.controllerId === null || mapping.controllerId === undefined) return null;
+      return navigator.getGamepads()[mapping.controllerId] || null;
+    }
+    return navigator.getGamepads()[playerIndex] || null;
   }
 
   public wasButtonJustPressed(controllerIndex: number, buttonIndex: number): boolean {
@@ -117,21 +163,20 @@ export class InputManager {
     let dx = 0;
     let dy = 0;
 
-    if (playerIndex === 0) {
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD') {
       if (this.keys.has('KeyW')) dy -= 1;
       if (this.keys.has('KeyS')) dy += 1;
       if (this.keys.has('KeyA')) dx -= 1;
       if (this.keys.has('KeyD')) dx += 1;
-    }
-
-    if (playerIndex === 1) {
+    } else if (scheme === 'ARROWS') {
       if (this.keys.has('ArrowUp')) dy -= 1;
       if (this.keys.has('ArrowDown')) dy += 1;
       if (this.keys.has('ArrowLeft')) dx -= 1;
       if (this.keys.has('ArrowRight')) dx += 1;
     }
 
-    const gp = navigator.getGamepads()[playerIndex];
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) {
       const threshold = 0.15;
       const lx = gp.axes[0];
@@ -147,49 +192,55 @@ export class InputManager {
   }
 
   public isMagicFirePressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('KeyE')) return true;
-    if (playerIndex === 1 && this.keys.has('Digit0')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyE')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Digit0')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[7].pressed; // R2
     return false;
   }
 
   public isJumpPressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('Space')) return true;
-    if (playerIndex === 1 && this.keys.has('ControlRight')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('Space')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('ControlRight')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[0].pressed || gp.buttons[10].pressed; // A or L3
     return false;
   }
 
   public isBlockPressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('ShiftLeft')) return true;
-    if (playerIndex === 1 && this.keys.has('ShiftRight')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('ShiftLeft')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('ShiftRight')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[6].pressed || gp.buttons[1].pressed; // LT or B
     return false;
   }
 
   public isRevivePressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('KeyR')) return true;
-    if (playerIndex === 1 && this.keys.has('Enter')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyR')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Enter')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[2].pressed; // X
     return false;
   }
 
   public isMeleePressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('KeyF')) return true;
-    if (playerIndex === 1 && this.keys.has('Period')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyF')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Period')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[1].pressed || gp.buttons[5].pressed; // B / R1
     return false;
   }
 
   public isLimitBreakPressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('KeyQ')) return true;
-    if (playerIndex === 1 && this.keys.has('Numpad0')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyQ')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Numpad0')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     // L3+R3 together (both stick clicks)
     if (gp) return gp.buttons[10].pressed && gp.buttons[11].pressed;
     return false;
@@ -200,8 +251,10 @@ export class InputManager {
       ['Digit1', 'Digit2', 'Digit3', 'Digit4'],
       ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4']
     ];
-    if (this.keys.has(keys[playerIndex][skillIndex])) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has(keys[0][skillIndex])) return true;
+    if (scheme === 'ARROWS' && this.keys.has(keys[1][skillIndex])) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) {
         // Face buttons AND triggers/bumpers for dual controller layout
         if (skillIndex === 0) return gp.buttons[2].pressed || gp.buttons[4].pressed; // X + LB
@@ -213,7 +266,7 @@ export class InputManager {
   }
 
   public getAim(playerIndex: number): { x: number; y: number } | null {
-    const gp = navigator.getGamepads()[playerIndex];
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) {
       const threshold = 0.2;
       const rx = gp.axes[2];
@@ -224,16 +277,17 @@ export class InputManager {
   }
 
   public isShootPressed(playerIndex: number): boolean {
-    if (playerIndex === 0 && this.keys.has('KeyE')) return true;
-    if (playerIndex === 1 && this.keys.has('Slash')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyE')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Slash')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[7].pressed;
     return false;
   }
 
   public isBuildCancelPressed(playerIndex: number): boolean {
     if (this.keys.has('Escape') || this.keys.has('KeyC')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[1].pressed;
     return false;
   }
@@ -241,60 +295,66 @@ export class InputManager {
   // Magic Wheel Controls
   public isWheelOpenPressed(playerIndex: number): boolean {
     // LB or Tab to open wheel
-    if (playerIndex === 0 && this.keys.has('Tab')) return true;
-    if (playerIndex === 1 && this.keys.has('Backslash')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('Tab')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Backslash')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[4].pressed; // LB
     return false;
   }
 
   public isWheelSelectPressed(playerIndex: number): boolean {
     // RT or click to select element
-    if (playerIndex === 0 && this.keys.has('KeyE')) return true;
-    if (playerIndex === 1 && this.keys.has('Slash')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyE')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Slash')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[7].pressed; // RT
     return false;
   }
 
   public isWheelCastPressed(playerIndex: number): boolean {
     // RB or Space to cast
-    if (playerIndex === 0 && this.keys.has('Space')) return true;
-    if (playerIndex === 1 && this.keys.has('Enter')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('Space')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Enter')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[5].pressed; // RB
     return false;
   }
 
   public isWheelClearPressed(playerIndex: number): boolean {
     // B or Backspace to clear stack
-    if (playerIndex === 0 && this.keys.has('Backspace')) return true;
-    if (playerIndex === 1 && this.keys.has('Delete')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('Backspace')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('Delete')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[1].pressed; // B
     return false;
   }
 
   public isWheelModePressed(playerIndex: number): boolean {
     // Y or G to cycle cast mode
-    if (playerIndex === 0 && this.keys.has('KeyG')) return true;
-    if (playerIndex === 1 && this.keys.has('NumpadAdd')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyG')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('NumpadAdd')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[3].pressed; // Y
     return false;
   }
 
   public isModifierCyclePressed(playerIndex: number): boolean {
     // X or DPad-Right to cycle modifier
-    if (playerIndex === 0 && this.keys.has('KeyX')) return true;
-    if (playerIndex === 1 && this.keys.has('NumpadMultiply')) return true;
-    const gp = navigator.getGamepads()[playerIndex];
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD' && this.keys.has('KeyX')) return true;
+    if (scheme === 'ARROWS' && this.keys.has('NumpadMultiply')) return true;
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) return gp.buttons[15].pressed; // DPad Right
     return false;
   }
 
   public getRightStick(playerIndex: number): { x: number; y: number } {
-    const gp = navigator.getGamepads()[playerIndex];
+    const gp = this.getGamepadForPlayer(playerIndex);
     if (gp) {
       const rx = gp.axes[2] || 0;
       const ry = gp.axes[3] || 0;
@@ -302,7 +362,8 @@ export class InputManager {
     }
     // Keyboard fallback: numpad or IJKL for player 0/1
     let x = 0, y = 0;
-    if (playerIndex === 0) {
+    const scheme = this.getKeyboardScheme(playerIndex);
+    if (scheme === 'WASD') {
       if (this.keys.has('KeyI')) y -= 1;
       if (this.keys.has('KeyK')) y += 1;
       if (this.keys.has('KeyJ')) x -= 1;

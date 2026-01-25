@@ -117,10 +117,10 @@ async function makeTileableAdvanced(input: Buffer, size: number): Promise<Buffer
   const h = meta.height!;
 
   // Step 1: Create mirror-fold base (guaranteed seamless)
-  const original = await sharp(input).png().toBuffer();
-  const flippedH = await sharp(input).flop().png().toBuffer();
-  const flippedV = await sharp(input).flip().png().toBuffer();
-  const flippedBoth = await sharp(input).flip().flop().png().toBuffer();
+  const original = await sharp(input).webp().toBuffer();
+  const flippedH = await sharp(input).flop().webp().toBuffer();
+  const flippedV = await sharp(input).flip().webp().toBuffer();
+  const flippedBoth = await sharp(input).flip().flop().webp().toBuffer();
 
   const composite = await sharp({
     create: { width: w * 2, height: h * 2, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 255 } }
@@ -131,7 +131,7 @@ async function makeTileableAdvanced(input: Buffer, size: number): Promise<Buffer
       { input: flippedV, top: h, left: 0 },
       { input: flippedBoth, top: h, left: w },
     ])
-    .png()
+    .webp()
     .toBuffer();
 
   // Step 2: Extract with slight offset to avoid pure mirror artifacts
@@ -141,7 +141,7 @@ async function makeTileableAdvanced(input: Buffer, size: number): Promise<Buffer
   const tiled = await sharp(composite)
     .extract({ left: offsetX, top: offsetY, width: w, height: h })
     .resize(size, size, { kernel: 'lanczos3' })
-    .png()
+    .webp()
     .toBuffer();
 
   return tiled;
@@ -170,7 +170,7 @@ async function generateNoiseTexture(size: number, scale: number, color: { r: num
   }
 
   return sharp(pixels, { raw: { width: size, height: size, channels } })
-    .png()
+    .webp()
     .toBuffer();
 }
 
@@ -209,7 +209,7 @@ async function generateTransitionMask(size: number, direction: 'horizontal' | 'v
   }
 
   return sharp(pixels, { raw: { width: size, height: size, channels } })
-    .png()
+    .webp()
     .toBuffer();
 }
 
@@ -229,7 +229,7 @@ async function createTileAtlas(tiles: Buffer[], tileSize: number, cols: number):
     create: { width: atlasWidth, height: atlasHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
   })
     .composite(composites)
-    .png()
+    .webp()
     .toBuffer();
 }
 
@@ -248,7 +248,7 @@ async function main() {
     let baseBuffer = await generateFromFal(config.base.prompt, config.base.size);
     if (baseBuffer) {
       baseBuffer = await makeTileableAdvanced(baseBuffer, 256);
-      writeFileSync(join(OUTPUT_DIR, 'base', `${biome}.png`), baseBuffer);
+      writeFileSync(join(OUTPUT_DIR, 'base', `${biome}.webp`), baseBuffer);
       console.log('    Saved base');
     }
 
@@ -257,7 +257,7 @@ async function main() {
     let detailBuffer = await generateFromFal(config.detail.prompt, config.detail.size);
     if (detailBuffer) {
       detailBuffer = await makeTileableAdvanced(detailBuffer, 64);
-      writeFileSync(join(OUTPUT_DIR, 'detail', `${biome}.png`), detailBuffer);
+      writeFileSync(join(OUTPUT_DIR, 'detail', `${biome}.webp`), detailBuffer);
       console.log('    Saved detail');
     }
 
@@ -266,7 +266,7 @@ async function main() {
     let varBuffer = await generateFromFal(config.variation.prompt, config.variation.size);
     if (varBuffer) {
       varBuffer = await makeTileableAdvanced(varBuffer, 128);
-      writeFileSync(join(OUTPUT_DIR, 'variation', `${biome}.png`), varBuffer);
+      writeFileSync(join(OUTPUT_DIR, 'variation', `${biome}.webp`), varBuffer);
       console.log('    Saved variation');
     }
 
@@ -279,13 +279,13 @@ async function main() {
       for (let i = 1; i < 4; i++) {
         const rotated = await sharp(baseBuffer)
           .rotate(i * 90)
-          .png()
+          .webp()
           .toBuffer();
         variants.push(rotated);
       }
 
       const atlas = await createTileAtlas(variants, 256, 2);
-      writeFileSync(join(OUTPUT_DIR, 'atlas', `${biome}_atlas.png`), atlas);
+      writeFileSync(join(OUTPUT_DIR, 'atlas', `${biome}_atlas.webp`), atlas);
       console.log('    Saved atlas (4 variants)');
     }
   }
@@ -297,12 +297,12 @@ async function main() {
     let transBuffer = await generateFromFal(trans.prompt, 256);
     if (transBuffer) {
       transBuffer = await makeTileableAdvanced(transBuffer, 256);
-      writeFileSync(join(OUTPUT_DIR, 'transition', `${trans.from}_${trans.to}.png`), transBuffer);
+      writeFileSync(join(OUTPUT_DIR, 'transition', `${trans.from}_${trans.to}.webp`), transBuffer);
     }
 
     // Also generate procedural mask
     const mask = await generateTransitionMask(256, 'horizontal');
-    writeFileSync(join(OUTPUT_DIR, 'transition', `${trans.from}_${trans.to}_mask.png`), mask);
+    writeFileSync(join(OUTPUT_DIR, 'transition', `${trans.from}_${trans.to}_mask.webp`), mask);
   }
 
   // Generate procedural noise maps for runtime variation
@@ -317,7 +317,7 @@ async function main() {
   for (const nc of noiseConfigs) {
     console.log(`  ${nc.name}...`);
     const noise = await generateNoiseTexture(128, nc.scale, nc.color);
-    writeFileSync(join(OUTPUT_DIR, 'variation', `${nc.name}.png`), noise);
+    writeFileSync(join(OUTPUT_DIR, 'variation', `${nc.name}.webp`), noise);
   }
 
   console.log('\n=== Done! ===');
