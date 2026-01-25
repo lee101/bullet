@@ -1,9 +1,12 @@
 
-import { Biome, Vec2, TownState, CityStyle, Campfire, Torch } from '../types';
-import { WORLD_WIDTH, WORLD_HEIGHT, TOWN_RADIUS } from '../constants';
-import { TerrainTile, TerrainFeature, generateTileFeatures, getEdgeCode, getTileVariant, BIOME_FEATURES } from './TerrainTiles';
+import { Biome, Vec2, CityStyle, Campfire, Torch } from '../types';
 
-// Simple seeded random for reproducible noise
+// Chunk-based procedural world with lazy generation
+const CHUNK_SIZE = 16; // tiles per chunk
+const TILE_SIZE = 40;
+const CHUNK_WORLD_SIZE = CHUNK_SIZE * TILE_SIZE; // 640 world units
+const UNLOAD_DISTANCE = 3; // chunks beyond view to keep loaded
+
 class SeededRandom {
   private seed: number;
   constructor(seed: number) { this.seed = seed; }
@@ -13,14 +16,12 @@ class SeededRandom {
   }
 }
 
-// Perlin-style noise implementation
 class PerlinNoise {
   private perm: number[] = [];
 
   constructor(seed: number) {
     const rng = new SeededRandom(seed);
     const p = Array.from({ length: 256 }, (_, i) => i);
-    // Shuffle
     for (let i = 255; i > 0; i--) {
       const j = Math.floor(rng.next() * (i + 1));
       [p[i], p[j]] = [p[j], p[i]];
@@ -56,19 +57,23 @@ class PerlinNoise {
     );
   }
 
-  // Optimized FBM with inlined constants
-  fbm(x: number, y: number, octaves: number = 4): number {
+  fbm(x: number, y: number, octaves: number = 3): number {
     let value = this.noise2D(x, y);
     if (octaves < 2) return value;
-    let amp = 0.5, freq = 2, max = 1.5;
-    value += amp * this.noise2D(x * freq, y * freq);
-    if (octaves < 3) return value / max;
-    amp = 0.25; freq = 4; max = 1.75;
-    value += amp * this.noise2D(x * freq, y * freq);
-    if (octaves < 4) return value / max;
-    value += 0.125 * this.noise2D(x * 8, y * 8);
-    return value / 1.875;
+    value += 0.5 * this.noise2D(x * 2, y * 2);
+    if (octaves < 3) return value / 1.5;
+    value += 0.25 * this.noise2D(x * 4, y * 4);
+    return value / 1.75;
   }
+}
+
+interface Chunk {
+  cx: number;
+  cy: number;
+  heightMap: Float32Array;
+  moistureMap: Float32Array;
+  biomes: Biome[];
+  lastAccess: number;
 }
 
 export interface Town {
@@ -79,359 +84,163 @@ export interface Town {
   style: CityStyle;
 }
 
+export interface TerrainTile {
+  biome: Biome;
+  edgeCode: number;
+  variant: number;
+  features: unknown[];
+  neighbors: { n: Biome; e: Biome; s: Biome; w: Biome };
+}
+
 export class WorldGenerator {
   private seed: number;
   private noise: PerlinNoise;
   private moistureNoise: PerlinNoise;
-  private temperatureNoise: PerlinNoise;
-  private heightMap: Float32Array;
-  private moistureMap: Float32Array;
-  public readonly gridSize = 40;
-  private cols: number;
-  private rows: number;
+  public readonly gridSize = TILE_SIZE;
   public towns: Town[] = [];
   public campfires: Campfire[] = [];
   public torches: Torch[] = [];
-  private riverMap: Set<number> = new Set();
-  private nextId: number = 0;
+  private chunks: Map<string, Chunk> = new Map();
+  private nextId = 0;
+  private frameCount = 0;
 
   constructor(seed = Math.random() * 10000) {
     this.seed = seed;
     this.noise = new PerlinNoise(seed);
     this.moistureNoise = new PerlinNoise(seed + 1000);
-    this.temperatureNoise = new PerlinNoise(seed + 2000);
-    this.cols = Math.ceil(WORLD_WIDTH / this.gridSize);
-    this.rows = Math.ceil(WORLD_HEIGHT / this.gridSize);
-    this.heightMap = new Float32Array(this.cols * this.rows);
-    this.moistureMap = new Float32Array(this.cols * this.rows);
-    this.generate();
-  }
-
-  private generate() {
-    // Pre-compute for speed
-    const invCols = 1 / this.cols;
-    const invRows = 1 / this.rows;
-
-    // Generate base terrain with FBM - optimized
-    for (let x = 0; x < this.cols; x++) {
-      const nx = x * invCols;
-      const dx = (nx - 0.5) * 2;
-      const dx2 = dx * dx;
-
-      for (let y = 0; y < this.rows; y++) {
-        const ny = y * invRows;
-        const dy = (ny - 0.5) * 2;
-        const distSq = dx2 + dy * dy;
-
-        // Reduced octaves for speed: 4 instead of 6
-        let height = this.noise.fbm(nx * 4, ny * 4, 4);
-        height = (height + 1) * 0.5;
-
-        // Fast falloff approximation
-        const falloff = Math.max(0, 1 - distSq * distSq);
-        height *= falloff;
-
-        // Reduced ridge octaves: 2 instead of 4
-        const ridgeNoise = Math.abs(this.noise.fbm(nx * 2, ny * 2, 2));
-        height += ridgeNoise * 0.15;
-
-        // Reduced moisture octaves: 2 instead of 4
-        const moisture = (this.moistureNoise.fbm(nx * 3, ny * 3, 2) + 1) * 0.5;
-
-        const idx = y * this.cols + x;
-        this.heightMap[idx] = height < 0 ? 0 : height > 1 ? 1 : height;
-        this.moistureMap[idx] = moisture;
-      }
-    }
-
     this.placeTowns();
-    this.carveMountainRanges();
-    this.generateRivers();
     this.placeCampfires();
     this.placeTorches();
   }
 
+  private chunkKey(cx: number, cy: number): string {
+    return `${cx},${cy}`;
+  }
+
+  private getChunk(cx: number, cy: number): Chunk {
+    const key = this.chunkKey(cx, cy);
+    let chunk = this.chunks.get(key);
+    if (!chunk) {
+      chunk = this.generateChunk(cx, cy);
+      this.chunks.set(key, chunk);
+    }
+    chunk.lastAccess = this.frameCount;
+    return chunk;
+  }
+
+  private generateChunk(cx: number, cy: number): Chunk {
+    const size = CHUNK_SIZE * CHUNK_SIZE;
+    const heightMap = new Float32Array(size);
+    const moistureMap = new Float32Array(size);
+    const biomes: Biome[] = new Array(size);
+
+    const worldStartX = cx * CHUNK_WORLD_SIZE;
+    const worldStartY = cy * CHUNK_WORLD_SIZE;
+
+    for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const worldX = worldStartX + lx * TILE_SIZE;
+        const worldY = worldStartY + ly * TILE_SIZE;
+        const idx = ly * CHUNK_SIZE + lx;
+
+        // Normalized coords for noise (scale to ~16k world)
+        const nx = worldX / 16000;
+        const ny = worldY / 16000;
+
+        // Height with falloff from center
+        const dx = (nx - 0.5) * 2;
+        const dy = (ny - 0.5) * 2;
+        const distSq = dx * dx + dy * dy;
+
+        let height = (this.noise.fbm(nx * 4, ny * 4, 3) + 1) * 0.5;
+        height *= Math.max(0, 1 - distSq * distSq);
+        height += Math.abs(this.noise.fbm(nx * 2, ny * 2, 2)) * 0.15;
+        height = Math.max(0, Math.min(1, height));
+
+        const moisture = (this.moistureNoise.fbm(nx * 3, ny * 3, 2) + 1) * 0.5;
+
+        heightMap[idx] = height;
+        moistureMap[idx] = moisture;
+        biomes[idx] = this.computeBiome(worldX, worldY, height, moisture);
+      }
+    }
+
+    return { cx, cy, heightMap, moistureMap, biomes, lastAccess: this.frameCount };
+  }
+
+  private computeBiome(worldX: number, worldY: number, height: number, moisture: number): Biome {
+    // Check towns
+    for (const town of this.towns) {
+      const dist = Math.sqrt((worldX - town.pos.x) ** 2 + (worldY - town.pos.y) ** 2);
+      if (dist < town.radius) return 'TOWN';
+    }
+
+    if (height < 0.12) return 'SEA';
+    if (height < 0.18) return 'SHORE';
+    if (height > 0.75) return 'SNOW';
+    if (height > 0.6) return 'MOUNTAIN';
+    if (moisture > 0.65 && height < 0.4) return 'SWAMP';
+    if (moisture > 0.5 && height > 0.35) return 'FOREST';
+    if (height < 0.3) return 'LOWLAND';
+    return 'GRASS';
+  }
+
   private placeTowns() {
-    const townConfigs: { name: string; style: CityStyle }[] = [
+    const rng = new SeededRandom(this.seed + 5000);
+    const configs: { name: string; style: CityStyle }[] = [
       { name: 'Citadel Bazaar', style: 'MEDIEVAL' },
       { name: 'Sun Spire', style: 'DESERT' },
       { name: 'Jade Temple', style: 'ASIAN' },
       { name: 'Frostheim', style: 'NORDIC' },
       { name: 'Silverleaf', style: 'ELVEN' },
       { name: 'Irondeep', style: 'DWARVEN' },
-      { name: 'Sandwatch', style: 'DESERT' },
-      { name: 'Mistpeak', style: 'ASIAN' },
     ];
 
-    const minTownDist = 3000;
-    const attempts = 500;
-    let townId = 0;
-
+    // Center town
     this.towns.push({
-      id: townId++,
-      name: townConfigs[0].name,
-      pos: { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 },
-      radius: TOWN_RADIUS,
-      style: townConfigs[0].style
+      id: 0,
+      name: configs[0].name,
+      pos: { x: 8000, y: 8000 },
+      radius: 400,
+      style: configs[0].style
     });
 
-    for (let i = 1; i < townConfigs.length && townId < 6; i++) {
-      for (let a = 0; a < attempts; a++) {
-        const x = 1500 + Math.random() * (WORLD_WIDTH - 3000);
-        const y = 1500 + Math.random() * (WORLD_HEIGHT - 3000);
-
-        const height = this.getHeightAt(x, y);
-        if (height < 0.25 || height > 0.65) continue;
-
-        let tooClose = false;
-        for (const town of this.towns) {
-          const dist = Math.sqrt((x - town.pos.x) ** 2 + (y - town.pos.y) ** 2);
-          if (dist < minTownDist) { tooClose = true; break; }
-        }
-        if (tooClose) continue;
-
-        // Style based on biome/location
-        let style = townConfigs[i].style;
-        const moisture = this.getMoistureAt(x, y);
-        if (height > 0.55) style = 'NORDIC';
-        else if (moisture < 0.3) style = 'DESERT';
-        else if (moisture > 0.6) style = 'ELVEN';
-
-        this.towns.push({
-          id: townId++,
-          name: townConfigs[i].name,
-          pos: { x, y },
-          radius: TOWN_RADIUS * (0.8 + Math.random() * 0.4),
-          style
-        });
-        break;
-      }
+    // Other towns at fixed angles from center
+    for (let i = 1; i < configs.length; i++) {
+      const angle = (i / (configs.length - 1)) * Math.PI * 2 + rng.next() * 0.3;
+      const dist = 2500 + rng.next() * 2000;
+      this.towns.push({
+        id: i,
+        name: configs[i].name,
+        pos: { x: 8000 + Math.cos(angle) * dist, y: 8000 + Math.sin(angle) * dist },
+        radius: 300 + rng.next() * 100,
+        style: configs[i].style
+      });
     }
-  }
-
-  private carveMountainRanges() {
-    // Create mountain ranges around each town (partial rings)
-    for (const town of this.towns) {
-      const numPeaks = 8 + Math.floor(Math.random() * 6);
-      const baseRadius = town.radius + 400;
-
-      for (let i = 0; i < numPeaks; i++) {
-        // Create gaps in the mountain ring
-        const gapChance = Math.random();
-        if (gapChance < 0.25) continue; // 25% chance of gap
-
-        const angle = (i / numPeaks) * Math.PI * 2 + Math.random() * 0.3;
-        const radius = baseRadius + Math.random() * 600;
-        const peakX = town.pos.x + Math.cos(angle) * radius;
-        const peakY = town.pos.y + Math.sin(angle) * radius;
-
-        // Raise terrain around this peak
-        this.raiseMountain(peakX, peakY, 200 + Math.random() * 300);
-      }
-    }
-  }
-
-  private raiseMountain(cx: number, cy: number, radius: number) {
-    const tileRadius = Math.ceil(radius / this.gridSize);
-    const tcx = Math.floor(cx / this.gridSize);
-    const tcy = Math.floor(cy / this.gridSize);
-
-    for (let dx = -tileRadius; dx <= tileRadius; dx++) {
-      for (let dy = -tileRadius; dy <= tileRadius; dy++) {
-        const tx = tcx + dx;
-        const ty = tcy + dy;
-        if (tx < 0 || tx >= this.cols || ty < 0 || ty >= this.rows) continue;
-
-        const worldX = tx * this.gridSize;
-        const worldY = ty * this.gridSize;
-        const dist = Math.sqrt((worldX - cx) ** 2 + (worldY - cy) ** 2);
-
-        if (dist < radius) {
-          const idx = ty * this.cols + tx;
-          const influence = 1 - (dist / radius);
-          const raise = influence * influence * 0.4;
-          this.heightMap[idx] = Math.min(1, this.heightMap[idx] + raise);
-        }
-      }
-    }
-  }
-
-  private generateRivers() {
-    // Start rivers from high points and flow to sea
-    const numRivers = 12;
-
-    for (let r = 0; r < numRivers; r++) {
-      // Find a high starting point
-      let startX = 0, startY = 0, maxHeight = 0;
-      for (let a = 0; a < 50; a++) {
-        const x = Math.floor(Math.random() * this.cols);
-        const y = Math.floor(Math.random() * this.rows);
-        const h = this.heightMap[y * this.cols + x];
-        if (h > 0.6 && h > maxHeight) {
-          maxHeight = h;
-          startX = x;
-          startY = y;
-        }
-      }
-
-      if (maxHeight < 0.5) continue;
-
-      // Flow downhill
-      let x = startX, y = startY;
-      const visited = new Set<number>();
-
-      for (let step = 0; step < 500; step++) {
-        const idx = y * this.cols + x;
-        if (visited.has(idx)) break;
-        visited.add(idx);
-
-        const height = this.heightMap[idx];
-        if (height < 0.15) break; // Reached sea
-
-        this.riverMap.add(idx);
-
-        // Find lowest neighbor
-        let lowestH = height;
-        let nextX = x, nextY = y;
-
-        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || nx >= this.cols || ny < 0 || ny >= this.rows) continue;
-          const nh = this.heightMap[ny * this.cols + nx];
-          if (nh < lowestH) {
-            lowestH = nh;
-            nextX = nx;
-            nextY = ny;
-          }
-        }
-
-        if (nextX === x && nextY === y) break; // Stuck
-        x = nextX;
-        y = nextY;
-      }
-    }
-  }
-
-  private getHeightAt(worldX: number, worldY: number): number {
-    const x = Math.floor(worldX / this.gridSize);
-    const y = Math.floor(worldY / this.gridSize);
-    if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return 0;
-    return this.heightMap[y * this.cols + x];
-  }
-
-  private getMoistureAt(worldX: number, worldY: number): number {
-    const x = Math.floor(worldX / this.gridSize);
-    const y = Math.floor(worldY / this.gridSize);
-    if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return 0.5;
-    return this.moistureMap[y * this.cols + x];
-  }
-
-  public getBiomeAt(worldX: number, worldY: number): Biome {
-    // Check towns first
-    for (const town of this.towns) {
-      const dist = Math.sqrt((worldX - town.pos.x) ** 2 + (worldY - town.pos.y) ** 2);
-      if (dist < town.radius) return 'TOWN';
-    }
-
-    const x = Math.floor(worldX / this.gridSize);
-    const y = Math.floor(worldY / this.gridSize);
-    if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return 'SEA';
-
-    const idx = y * this.cols + x;
-    const height = this.heightMap[idx];
-    const moisture = this.moistureMap[idx];
-
-    // Check for river
-    if (this.riverMap.has(idx)) return 'RIVER';
-
-    // Height-based biomes
-    if (height < 0.12) return 'SEA';
-    if (height < 0.18) return 'SHORE';
-    if (height > 0.75) return 'SNOW';
-    if (height > 0.6) return 'MOUNTAIN';
-
-    // Moisture + height based biomes
-    if (moisture > 0.65 && height < 0.4) return 'SWAMP';
-    if (moisture > 0.5 && height > 0.35) return 'FOREST';
-    if (height < 0.3) return 'LOWLAND';
-
-    return 'GRASS';
-  }
-
-  public getSpawnablePosition(): Vec2 {
-    let attempts = 0;
-    while (attempts < 200) {
-      const x = 500 + Math.random() * (WORLD_WIDTH - 1000);
-      const y = 500 + Math.random() * (WORLD_HEIGHT - 1000);
-      const biome = this.getBiomeAt(x, y);
-      if (biome !== 'SEA' && biome !== 'MOUNTAIN' && biome !== 'SNOW' && biome !== 'RIVER' && biome !== 'TOWN') {
-        return { x, y };
-      }
-      attempts++;
-    }
-    // Fallback to near first town
-    const town = this.towns[0];
-    return { x: town.pos.x + 600, y: town.pos.y + 600 };
-  }
-
-  public getShorePositions(count: number): Vec2[] {
-    const positions: Vec2[] = [];
-    let attempts = 0;
-
-    while (positions.length < count && attempts < count * 20) {
-      const x = 500 + Math.random() * (WORLD_WIDTH - 1000);
-      const y = 500 + Math.random() * (WORLD_HEIGHT - 1000);
-      const biome = this.getBiomeAt(x, y);
-      if (biome === 'SHORE') {
-        const adjacentToSea =
-          this.getBiomeAt(x - this.gridSize, y) === 'SEA' ||
-          this.getBiomeAt(x + this.gridSize, y) === 'SEA' ||
-          this.getBiomeAt(x, y - this.gridSize) === 'SEA' ||
-          this.getBiomeAt(x, y + this.gridSize) === 'SEA';
-        if (adjacentToSea) {
-          positions.push({ x, y });
-        }
-      }
-      attempts++;
-    }
-
-    return positions;
-  }
-
-  public getTowns(): Town[] {
-    return this.towns;
   }
 
   private placeCampfires() {
-    const numCampfires = 15;
-    for (let i = 0; i < numCampfires; i++) {
-      const pos = this.getSpawnablePosition();
-      const biome = this.getBiomeAt(pos.x, pos.y);
-      if (biome === 'TOWN') continue;
+    const rng = new SeededRandom(this.seed + 3000);
+    for (let i = 0; i < 15; i++) {
+      const angle = rng.next() * Math.PI * 2;
+      const dist = 1000 + rng.next() * 5000;
       this.campfires.push({
         id: this.nextId++,
-        pos,
+        pos: { x: 8000 + Math.cos(angle) * dist, y: 8000 + Math.sin(angle) * dist },
         radius: 60
       });
     }
   }
 
-  public getCampfires(): Campfire[] {
-    return this.campfires;
-  }
-
   private placeTorches() {
-    // Place torches around each town's perimeter (gates/entrances)
     for (const town of this.towns) {
-      const numTorches = 8;
-      for (let i = 0; i < numTorches; i++) {
-        const angle = (i / numTorches) * Math.PI * 2;
-        const dist = town.radius - 20;
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
         this.torches.push({
           id: this.nextId++,
           pos: {
-            x: town.pos.x + Math.cos(angle) * dist,
-            y: town.pos.y + Math.sin(angle) * dist
+            x: town.pos.x + Math.cos(angle) * (town.radius - 20),
+            y: town.pos.y + Math.sin(angle) * (town.radius - 20)
           },
           flicker: Math.random()
         });
@@ -439,16 +248,52 @@ export class WorldGenerator {
     }
   }
 
-  public getTorches(): Torch[] {
-    return this.torches;
+  public getBiomeAt(worldX: number, worldY: number): Biome {
+    const cx = Math.floor(worldX / CHUNK_WORLD_SIZE);
+    const cy = Math.floor(worldY / CHUNK_WORLD_SIZE);
+    const chunk = this.getChunk(cx, cy);
+
+    const lx = Math.floor((worldX - cx * CHUNK_WORLD_SIZE) / TILE_SIZE);
+    const ly = Math.floor((worldY - cy * CHUNK_WORLD_SIZE) / TILE_SIZE);
+    const idx = Math.max(0, Math.min(CHUNK_SIZE - 1, ly)) * CHUNK_SIZE + Math.max(0, Math.min(CHUNK_SIZE - 1, lx));
+
+    return chunk.biomes[idx] || 'GRASS';
   }
 
-  // Fast biome-only lookup for rendering (no features/neighbors)
   public getBiomeAtFast(worldX: number, worldY: number): Biome {
     return this.getBiomeAt(worldX, worldY);
   }
 
-  // Get full tile data with neighbors, edge code, and features (expensive - avoid in hot path)
+  public getSpawnablePosition(): Vec2 {
+    const rng = new SeededRandom(Date.now());
+    for (let i = 0; i < 50; i++) {
+      const angle = rng.next() * Math.PI * 2;
+      const dist = 500 + rng.next() * 1500;
+      const x = 8000 + Math.cos(angle) * dist;
+      const y = 8000 + Math.sin(angle) * dist;
+      const biome = this.getBiomeAt(x, y);
+      if (biome !== 'SEA' && biome !== 'MOUNTAIN' && biome !== 'SNOW' && biome !== 'RIVER' && biome !== 'TOWN') {
+        return { x, y };
+      }
+    }
+    return { x: 8600, y: 8600 };
+  }
+
+  public getShorePositions(count: number): Vec2[] {
+    const positions: Vec2[] = [];
+    const rng = new SeededRandom(this.seed + 9000);
+    for (let i = 0; i < count * 20 && positions.length < count; i++) {
+      const x = 500 + rng.next() * 15000;
+      const y = 500 + rng.next() * 15000;
+      if (this.getBiomeAt(x, y) === 'SHORE') positions.push({ x, y });
+    }
+    return positions;
+  }
+
+  public getTowns(): Town[] { return this.towns; }
+  public getCampfires(): Campfire[] { return this.campfires; }
+  public getTorches(): Torch[] { return this.torches; }
+
   public getTileAt(worldX: number, worldY: number): TerrainTile {
     const biome = this.getBiomeAt(worldX, worldY);
     return {
@@ -460,103 +305,77 @@ export class WorldGenerator {
     };
   }
 
-  // Get interpolated height for smooth transitions
   public getInterpolatedHeight(worldX: number, worldY: number): number {
-    const x = worldX / this.gridSize;
-    const y = worldY / this.gridSize;
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
-    const fx = x - x0;
-    const fy = y - y0;
-
-    const h00 = this.getHeightAtTile(x0, y0);
-    const h10 = this.getHeightAtTile(x0 + 1, y0);
-    const h01 = this.getHeightAtTile(x0, y0 + 1);
-    const h11 = this.getHeightAtTile(x0 + 1, y0 + 1);
-
-    // Bilinear interpolation
-    const h0 = h00 + (h10 - h00) * fx;
-    const h1 = h01 + (h11 - h01) * fx;
-    return h0 + (h1 - h0) * fy;
+    const cx = Math.floor(worldX / CHUNK_WORLD_SIZE);
+    const cy = Math.floor(worldY / CHUNK_WORLD_SIZE);
+    const chunk = this.getChunk(cx, cy);
+    const lx = Math.floor((worldX - cx * CHUNK_WORLD_SIZE) / TILE_SIZE);
+    const ly = Math.floor((worldY - cy * CHUNK_WORLD_SIZE) / TILE_SIZE);
+    const idx = Math.max(0, Math.min(CHUNK_SIZE * CHUNK_SIZE - 1, ly * CHUNK_SIZE + lx));
+    return chunk.heightMap[idx] || 0.3;
   }
 
-  private getHeightAtTile(tx: number, ty: number): number {
-    if (tx < 0 || tx >= this.cols || ty < 0 || ty >= this.rows) return 0;
-    return this.heightMap[ty * this.cols + tx];
-  }
-
-  // Get transition blend factor for smooth biome edges
   public getTransitionBlend(worldX: number, worldY: number): { primary: Biome; secondary: Biome | null; blend: number } {
     const biome = this.getBiomeAt(worldX, worldY);
-    const tileX = Math.floor(worldX / this.gridSize);
-    const tileY = Math.floor(worldY / this.gridSize);
-
-    // Check distance to tile edges
-    const localX = (worldX % this.gridSize) / this.gridSize;
-    const localY = (worldY % this.gridSize) / this.gridSize;
-
-    // Edge detection threshold
+    const localX = ((worldX % TILE_SIZE) + TILE_SIZE) % TILE_SIZE / TILE_SIZE;
+    const localY = ((worldY % TILE_SIZE) + TILE_SIZE) % TILE_SIZE / TILE_SIZE;
     const edgeThresh = 0.25;
     let secondary: Biome | null = null;
     let blend = 0;
 
-    // Check if near any edge and get neighbor biome
     if (localX < edgeThresh) {
-      const neighbor = this.getBiomeAt(worldX - this.gridSize, worldY);
-      if (neighbor !== biome) {
-        secondary = neighbor;
-        blend = 1 - (localX / edgeThresh);
-      }
+      const n = this.getBiomeAt(worldX - TILE_SIZE, worldY);
+      if (n !== biome) { secondary = n; blend = 1 - localX / edgeThresh; }
     } else if (localX > 1 - edgeThresh) {
-      const neighbor = this.getBiomeAt(worldX + this.gridSize, worldY);
-      if (neighbor !== biome) {
-        secondary = neighbor;
-        blend = (localX - (1 - edgeThresh)) / edgeThresh;
-      }
+      const n = this.getBiomeAt(worldX + TILE_SIZE, worldY);
+      if (n !== biome) { secondary = n; blend = (localX - (1 - edgeThresh)) / edgeThresh; }
     }
-
-    if (localY < edgeThresh && !secondary) {
-      const neighbor = this.getBiomeAt(worldX, worldY - this.gridSize);
-      if (neighbor !== biome) {
-        secondary = neighbor;
-        blend = 1 - (localY / edgeThresh);
-      }
-    } else if (localY > 1 - edgeThresh && !secondary) {
-      const neighbor = this.getBiomeAt(worldX, worldY + this.gridSize);
-      if (neighbor !== biome) {
-        secondary = neighbor;
-        blend = (localY - (1 - edgeThresh)) / edgeThresh;
-      }
+    if (!secondary && localY < edgeThresh) {
+      const n = this.getBiomeAt(worldX, worldY - TILE_SIZE);
+      if (n !== biome) { secondary = n; blend = 1 - localY / edgeThresh; }
+    } else if (!secondary && localY > 1 - edgeThresh) {
+      const n = this.getBiomeAt(worldX, worldY + TILE_SIZE);
+      if (n !== biome) { secondary = n; blend = (localY - (1 - edgeThresh)) / edgeThresh; }
     }
 
     return { primary: biome, secondary, blend: Math.min(1, blend * 0.5) };
   }
 
-  // Get all visible tiles in a viewport with their full data
   public getVisibleTiles(camX: number, camY: number, viewWidth: number, viewHeight: number): { x: number; y: number; tile: TerrainTile }[] {
     const tiles: { x: number; y: number; tile: TerrainTile }[] = [];
-    const startX = Math.floor(camX / this.gridSize);
-    const startY = Math.floor(camY / this.gridSize);
-    const endX = Math.ceil((camX + viewWidth) / this.gridSize) + 1;
-    const endY = Math.ceil((camY + viewHeight) / this.gridSize) + 1;
+    const startX = Math.floor(camX / TILE_SIZE);
+    const startY = Math.floor(camY / TILE_SIZE);
+    const endX = Math.ceil((camX + viewWidth) / TILE_SIZE) + 1;
+    const endY = Math.ceil((camY + viewHeight) / TILE_SIZE) + 1;
 
     for (let tx = startX; tx < endX; tx++) {
       for (let ty = startY; ty < endY; ty++) {
-        const worldX = tx * this.gridSize;
-        const worldY = ty * this.gridSize;
-        tiles.push({
-          x: worldX,
-          y: worldY,
-          tile: this.getTileAt(worldX, worldY)
-        });
+        const worldX = tx * TILE_SIZE;
+        const worldY = ty * TILE_SIZE;
+        tiles.push({ x: worldX, y: worldY, tile: this.getTileAt(worldX, worldY) });
       }
     }
-
     return tiles;
   }
 
-  // Get procedural detail noise for a position (for adding variation within tiles)
   public getDetailNoise(worldX: number, worldY: number, scale: number = 0.1): number {
-    return this.noise.fbm(worldX * scale, worldY * scale, 3);
+    return this.noise.fbm(worldX * scale, worldY * scale, 2);
+  }
+
+  // Call each frame to track chunk access and unload old chunks
+  public update(camX: number, camY: number, viewWidth: number, viewHeight: number) {
+    this.frameCount++;
+    if (this.frameCount % 60 !== 0) return; // Check every second
+
+    const centerCx = Math.floor((camX + viewWidth / 2) / CHUNK_WORLD_SIZE);
+    const centerCy = Math.floor((camY + viewHeight / 2) / CHUNK_WORLD_SIZE);
+
+    // Unload chunks far from camera
+    for (const [key, chunk] of this.chunks) {
+      const dist = Math.max(Math.abs(chunk.cx - centerCx), Math.abs(chunk.cy - centerCy));
+      if (dist > UNLOAD_DISTANCE) {
+        this.chunks.delete(key);
+      }
+    }
   }
 }

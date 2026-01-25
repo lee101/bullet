@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
     "test:perf": "node scripts/perf-test.js",
     "gen:textures": "FAL_API_KEY=$FAL_API_KEY npx tsx scripts/generate-textures.ts",
     "tile:textures": "npx tsx scripts/make-tileable.ts",
@@ -19,6 +21,8 @@
   },
   "devDependencies": {
     "@fal-ai/client": "^1.8.3",
+    "@playwright/test": "^1.58.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.23",

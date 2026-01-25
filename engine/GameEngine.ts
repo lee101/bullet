@@ -600,6 +600,9 @@ export class GameEngine {
     this.camera.x += (targetCamX - this.camera.x) * 0.08;
     this.camera.y += (targetCamY - this.camera.y) * 0.08;
 
+    // Lazy chunk loading/unloading
+    this.world.update(this.camera.x, this.camera.y, window.innerWidth, window.innerHeight);
+
     this.players.forEach((p, i) => {
       const pos = this.playerPositions[i];
       if (p.isDead) return;
