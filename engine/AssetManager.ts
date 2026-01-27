@@ -94,6 +94,24 @@ class AssetManager {
 
   setProgressCallback(callback: (progress: LoadProgress) => void) {
     this.progressCallback = callback;
+    // Immediately report current progress so late subscribers get the current state
+    if (this.loaded) {
+      callback({
+        loaded: this.loadedCount,
+        total: this.totalCount,
+        phase: 'complete',
+        percent: 100
+      });
+    } else if (this.loadedCount > 0) {
+      // Loading in progress - report current state
+      const phase = this.criticalLoaded ? 'gameplay' : 'critical';
+      callback({
+        loaded: this.loadedCount,
+        total: this.totalCount,
+        phase,
+        percent: Math.round((this.loadedCount / Math.max(1, this.totalCount)) * 100)
+      });
+    }
   }
 
   async load(): Promise<void> {
