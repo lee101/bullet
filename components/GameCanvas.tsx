@@ -187,43 +187,51 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.globalAlpha = 1;
       });
 
-      // Fire telegraphs - flashing warning circles
-      state.fireTelegraphs?.forEach(ft => {
-          if (ft.pos.x < cam.x - fireViewMargin || ft.pos.x > cam.x + vw + fireViewMargin ||
-              ft.pos.y < cam.y - fireViewMargin || ft.pos.y > cam.y + vh + fireViewMargin) return;
-          const flash = Math.sin(Date.now() * 0.02 * ft.flashRate) > 0;
+      // Fire telegraphs - flashing warning circles (batched)
+      const visibleTelegraphs = state.fireTelegraphs?.filter(ft =>
+        ft.pos.x >= cam.x - fireViewMargin && ft.pos.x <= cam.x + vw + fireViewMargin &&
+        ft.pos.y >= cam.y - fireViewMargin && ft.pos.y <= cam.y + vh + fireViewMargin
+      ) || [];
+      if (visibleTelegraphs.length > 0) {
+        const now = Date.now();
+        ctx.setLineDash([10, 5]);
+        visibleTelegraphs.forEach(ft => {
+          const flash = Math.sin(now * 0.02 * ft.flashRate) > 0;
           const urgency = 1 - ft.life / ft.maxLife;
           ctx.strokeStyle = flash ? `rgba(255, ${100 - urgency * 100}, 0, ${0.5 + urgency * 0.5})` : 'rgba(255, 200, 0, 0.3)';
           ctx.lineWidth = 3 + urgency * 4;
-          ctx.setLineDash([10, 5]);
           ctx.beginPath(); ctx.arc(ft.pos.x, ft.pos.y, ft.radius, 0, Math.PI*2); ctx.stroke();
-          ctx.setLineDash([]);
           if (flash) {
             ctx.fillStyle = `rgba(255, 100, 0, ${0.1 + urgency * 0.2})`;
             ctx.beginPath(); ctx.arc(ft.pos.x, ft.pos.y, ft.radius, 0, Math.PI*2); ctx.fill();
           }
-      });
+        });
+        ctx.setLineDash([]);
+      }
 
-      // Slash effects
-      state.slashEffects?.forEach(s => {
-          if (s.pos.x < cam.x - 150 || s.pos.x > cam.x + vw + 150 ||
-              s.pos.y < cam.y - 150 || s.pos.y > cam.y + vh + 150) return;
+      // Slash effects - batched with reduced state changes
+      const visibleSlashes = state.slashEffects?.filter(s =>
+        s.pos.x >= cam.x - 150 && s.pos.x <= cam.x + vw + 150 &&
+        s.pos.y >= cam.y - 150 && s.pos.y <= cam.y + vh + 150
+      ) || [];
+      if (visibleSlashes.length > 0) {
+        ctx.lineCap = 'round';
+        visibleSlashes.forEach(s => {
           const progress = 1 - s.life / s.maxLife;
-          const alpha = 1 - progress;
           ctx.save();
           ctx.translate(s.pos.x, s.pos.y);
           ctx.rotate(s.angle);
           ctx.strokeStyle = s.color;
           ctx.lineWidth = s.width * (1 - progress * 0.5);
-          ctx.lineCap = 'round';
-          ctx.globalAlpha = alpha;
+          ctx.globalAlpha = 1 - progress;
           ctx.beginPath();
           ctx.moveTo(-s.range * 0.5 * progress, 0);
           ctx.quadraticCurveTo(0, -15 * (1 - progress), s.range * 0.5 + s.range * progress * 0.3, 0);
           ctx.stroke();
-          ctx.globalAlpha = 1;
           ctx.restore();
-      });
+        });
+        ctx.globalAlpha = 1;
+      }
 
       const viewMargin = 100;
       const viewLeft = cam.x - viewMargin;

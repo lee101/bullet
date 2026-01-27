@@ -1,18 +1,28 @@
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { HUD } from './components/HUD';
 import { MainMenu } from './components/MainMenu';
-import { UpgradeScreen } from './components/UpgradeScreen';
-import { ShopUI } from './components/ShopUI';
-import { TestUI } from './components/TestUI';
-import { Lobby } from './components/Lobby';
-import { CharacterSelect } from './components/CharacterSelect';
 import { GameEngine } from './engine/GameEngine';
 import { InputManager } from './engine/InputManager';
 import { audioManager } from './engine/AudioManager';
 import { shouldRunTests } from './engine/TestRunner';
+import { assetManager, LoadProgress } from './engine/AssetManager';
 import { GameState, LobbySlot, InputType } from './types';
+
+// Lazy load non-critical components
+const UpgradeScreen = lazy(() => import('./components/UpgradeScreen').then(m => ({ default: m.UpgradeScreen })));
+const ShopUI = lazy(() => import('./components/ShopUI').then(m => ({ default: m.ShopUI })));
+const TestUI = lazy(() => import('./components/TestUI').then(m => ({ default: m.TestUI })));
+const Lobby = lazy(() => import('./components/Lobby').then(m => ({ default: m.Lobby })));
+const CharacterSelect = lazy(() => import('./components/CharacterSelect').then(m => ({ default: m.CharacterSelect })));
+
+// Suspense fallback component
+const LoadingFallback: React.FC = () => (
+  <div className="flex items-center justify-center h-screen bg-black/60 backdrop-blur-xl">
+    <div className="text-white text-2xl font-orbitron">Loading...</div>
+  </div>
+);
 
 const createEmptySlot = (): LobbySlot => ({
   joined: false,
@@ -31,12 +41,14 @@ const App: React.FC = () => {
   const [lobbySlots, setLobbySlots] = useState<LobbySlot[]>([createEmptySlot(), createEmptySlot(), createEmptySlot(), createEmptySlot()]);
   const [fps, setFps] = useState(60);
   const [preWarmed, setPreWarmed] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<LoadProgress>({ loaded: 0, total: 100, phase: 'critical', percent: 0 });
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameRef = useRef(performance.now());
 
-  // Pre-warm engine immediately
+  // Pre-warm engine with progress tracking
   useEffect(() => {
     if (!preWarmed && gameState === GameState.MENU) {
+      assetManager.setProgressCallback(setLoadProgress);
       engine.preWarm().then(() => setPreWarmed(true));
     }
   }, [engine, gameState, preWarmed]);
@@ -196,7 +208,11 @@ const App: React.FC = () => {
   };
 
   if (shouldRunTests()) {
-    return <TestUI />;
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <TestUI />
+      </Suspense>
+    );
   }
 
   return (
@@ -204,41 +220,49 @@ const App: React.FC = () => {
       <div className="w-full h-full">
         <div className="relative w-full h-full">
 
-          {gameState === GameState.MENU && <MainMenu onStart={handleStart} />}
+          {gameState === GameState.MENU && <MainMenu onStart={handleStart} loadProgress={loadProgress} />}
 
           {gameState === GameState.LOBBY && (
-            <Lobby
-              onPlayerJoin={handlePlayerJoin}
-              onPlayerLeave={handlePlayerLeave}
-              onProceed={handleLobbyProceed}
-              onBack={handleLobbyBack}
-            />
+            <Suspense fallback={<LoadingFallback />}>
+              <Lobby
+                onPlayerJoin={handlePlayerJoin}
+                onPlayerLeave={handlePlayerLeave}
+                onProceed={handleLobbyProceed}
+                onBack={handleLobbyBack}
+              />
+            </Suspense>
           )}
 
           {gameState === GameState.CHARACTER_SELECT && (
-            <CharacterSelect
-              slots={lobbySlots}
-              onSelectCharacter={handleSelectCharacter}
-              onReady={handleReady}
-              onBack={handleCharacterSelectBack}
-              onStartGame={handleStartGame}
-            />
+            <Suspense fallback={<LoadingFallback />}>
+              <CharacterSelect
+                slots={lobbySlots}
+                onSelectCharacter={handleSelectCharacter}
+                onReady={handleReady}
+                onBack={handleCharacterSelectBack}
+                onStartGame={handleStartGame}
+              />
+            </Suspense>
           )}
 
           {gameState === GameState.UPGRADE && (
-            <UpgradeScreen onSelect={handleUpgrade} />
+            <Suspense fallback={<LoadingFallback />}>
+              <UpgradeScreen onSelect={handleUpgrade} />
+            </Suspense>
           )}
 
           {gameState === GameState.SHOP && (
-            <ShopUI
-                players={drawState.players}
-                money={drawState.money}
-                town={drawState.town}
-                onBuy={handleBuy}
-                onEquipSpell={handleEquipSpell}
-                onAllocateStat={handleAllocateStat}
-                onExit={handleExitShop}
-            />
+            <Suspense fallback={<LoadingFallback />}>
+              <ShopUI
+                  players={drawState.players}
+                  money={drawState.money}
+                  town={drawState.town}
+                  onBuy={handleBuy}
+                  onEquipSpell={handleEquipSpell}
+                  onAllocateStat={handleAllocateStat}
+                  onExit={handleExitShop}
+              />
+            </Suspense>
           )}
 
           <div className="relative w-full h-full flex items-center justify-center">
