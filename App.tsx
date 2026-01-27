@@ -41,7 +41,7 @@ const App: React.FC = () => {
   const [lobbySlots, setLobbySlots] = useState<LobbySlot[]>([createEmptySlot(), createEmptySlot(), createEmptySlot(), createEmptySlot()]);
   const [fps, setFps] = useState(60);
   const [preWarmed, setPreWarmed] = useState(false);
-  const [loadProgress, setLoadProgress] = useState<LoadProgress>({ loaded: 0, total: 100, phase: 'critical', percent: 0 });
+  const [loadProgress, setLoadProgress] = useState<LoadProgress>({ loaded: 0, total: 0, phase: 'critical', percent: 0 });
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameRef = useRef(performance.now());
 

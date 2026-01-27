@@ -107,14 +107,6 @@ class AssetManager {
     this.loading = false;
   }
 
-  // Fast load for critical assets only - allows game to start faster
-  async loadCritical(): Promise<void> {
-    if (this.criticalLoaded) return;
-    await this._loadPhase(CRITICAL_ASSETS, 'critical');
-    await this._loadMagicAssets(); // Magic is critical for gameplay
-    this.criticalLoaded = true;
-  }
-
   private async _loadProgressive(): Promise<void> {
     // Calculate total count for progress tracking
     this.totalCount = this._countAssets(CRITICAL_ASSETS) +
@@ -167,6 +159,7 @@ class AssetManager {
         resolve(img);
       };
       img.onerror = () => {
+        console.warn(`[AssetManager] Failed to load: ${src}`);
         this.loadedCount++;
         resolve(img); // Resolve with empty image on error
       };
