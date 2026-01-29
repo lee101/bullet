@@ -65,7 +65,7 @@ import {
   PLAYER_COLORS,
   ALL_CHARACTERS
 } from '../constants';
-import { InputType, CharacterDef } from '../types';
+import { InputType, CharacterDef, MagicElement } from '../types';
 import { InputManager } from './InputManager';
 import { WorldGenerator } from './WorldGenerator';
 import { MagicWheel, ELEMENT_COLORS as MAGIC_ELEMENT_COLORS } from './MagicWheel';
@@ -898,9 +898,11 @@ export class GameEngine {
                 : p.lastAimAngle;
 
               const castMode = wheel.getState().castMode;
+              const elements = wheel.getState().stack.elements;
               if (castMode === 'ATTACK') {
                 const projs = wheel.cast(i, pos, aimAngle);
                 projs.forEach(proj => this.magicProjectiles.push(proj));
+                this.createMagicCastEffect(pos, aimAngle, elements[0]);
               } else if (castMode === 'SELF') {
                 const result = wheel.castSelf(i, pos);
                 if (result.heal > 0) {
@@ -2957,6 +2959,36 @@ export class GameEngine {
         size: 1.5
       });
     }
+  }
+
+  private createMagicCastEffect(pos: Vec2, angle: number, element: MagicElement) {
+    const color = MAGIC_ELEMENT_COLORS[element] || '#cc33ff';
+    // Burst in cast direction
+    for (let i = 0; i < 12; i++) {
+      const spread = (Math.random() - 0.5) * 0.8;
+      const spd = 5 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(angle) * 15, y: pos.y + Math.sin(angle) * 15 },
+        vel: { x: Math.cos(angle + spread) * spd, y: Math.sin(angle + spread) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color,
+        size: 3 + Math.random() * 2
+      });
+    }
+    // Ring around caster
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 20, y: pos.y + Math.sin(ang) * 20 },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 12,
+        maxLife: 12,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+    this.triggerScreenShake(2, 5);
   }
 
   private addLevelUpText(pos: Vec2, level: number) {
