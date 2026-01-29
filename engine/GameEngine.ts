@@ -639,7 +639,42 @@ export class GameEngine {
         });
       }
     }
-    this.triggerScreenShake(12, 30);
+
+    // Ominous dark particles rising
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 60;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 2, y: -3 - Math.random() * 4 },
+        life: 50 + Math.random() * 30,
+        maxLife: 80,
+        color: '#440044',
+        size: 5 + Math.random() * 3
+      });
+    }
+
+    // Lightning strikes around boss
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = 100 + Math.random() * 30;
+      const strikeX = pos.x + Math.cos(ang) * dist;
+      const strikeY = pos.y + Math.sin(ang) * dist;
+
+      // Lightning bolt particles descending
+      for (let j = 0; j < 6; j++) {
+        this.particles.push({
+          pos: { x: strikeX + (Math.random() - 0.5) * 10, y: strikeY - 50 - j * 20 },
+          vel: { x: (Math.random() - 0.5) * 4, y: 8 + Math.random() * 4 },
+          life: 5 + j * 2,
+          maxLife: 17,
+          color: '#ffff88',
+          size: 3 + Math.random() * 2
+        });
+      }
+    }
+
+    this.triggerScreenShake(15, 40);
   }
 
   private hasLineOfSight(from: Vec2, to: Vec2): boolean {
@@ -5447,6 +5482,216 @@ export class GameEngine {
       visionCone: 0,
       visionRange: 0
     });
+  }
+
+  private createCriticalHitEffect(pos: Vec2, damage: number) {
+    // Golden starburst explosion
+    const starPoints = 16;
+    for (let i = 0; i < starPoints; i++) {
+      const ang = (i / starPoints) * Math.PI * 2;
+      const spd = 6 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ffd700',
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    // Inner white flash
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Sparkle trails outward
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 10 + Math.random() * 20;
+      const spd = 2 + Math.random() * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffee88',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Ascending golden sparks based on damage
+    const sparkCount = Math.min(Math.floor(damage / 10), 12);
+    for (let i = 0; i < sparkCount; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 3, y: -4 - Math.random() * 4 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#ffa500',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Small screen shake for impact
+    this.triggerScreenShake(4, 8);
+  }
+
+  private createResourcePickupTrail(pos: Vec2, targetPos: Vec2, resourceType: string) {
+    const dx = targetPos.x - pos.x;
+    const dy = targetPos.y - pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const steps = Math.max(5, Math.floor(dist / 20));
+
+    // Color based on resource type
+    const colors: Record<string, string[]> = {
+      coin: ['#ffd700', '#ffee88', '#ffffff'],
+      health: ['#ff4444', '#ff8888', '#ffcccc'],
+      mana: ['#4488ff', '#88ccff', '#ccffff'],
+      xp: ['#44ff44', '#88ff88', '#ccffcc']
+    };
+    const colorSet = colors[resourceType] || colors.coin;
+
+    // Trail particles along the arc
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // Create arc trajectory
+      const arcHeight = dist * 0.3 * Math.sin(t * Math.PI);
+      const x = pos.x + dx * t;
+      const y = pos.y + dy * t - arcHeight;
+
+      // Main trail particles
+      for (let j = 0; j < 2; j++) {
+        this.particles.push({
+          pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
+          vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() },
+          life: 15 + Math.random() * 10 + (steps - i) * 2,
+          maxLife: 35,
+          color: colorSet[Math.floor(Math.random() * colorSet.length)],
+          size: 3 + Math.random() * 2
+        });
+      }
+    }
+
+    // Sparkle burst at collection point
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const spd = 2 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...targetPos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: colorSet[0],
+        size: 2 + Math.random()
+      });
+    }
+
+    // Ascending "+1" style particles
+    for (let i = 0; i < 4; i++) {
+      this.particles.push({
+        pos: { x: targetPos.x + (Math.random() - 0.5) * 15, y: targetPos.y },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -2.5 - Math.random() },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffffff',
+        size: 2 + Math.random()
+      });
+    }
+  }
+
+  private createComboFeedbackEffect(pos: Vec2, comboCount: number, color: string) {
+    // Intensity scales with combo
+    const intensity = Math.min(comboCount / 10, 2);
+
+    // Combo ring burst
+    const ringPoints = 16 + Math.floor(comboCount / 2);
+    for (let i = 0; i < ringPoints; i++) {
+      const ang = (i / ringPoints) * Math.PI * 2;
+      const spd = 4 + intensity * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + intensity * 10,
+        maxLife: 25 + intensity * 10,
+        color,
+        size: 3 + intensity
+      });
+    }
+
+    // Inner power glow
+    for (let i = 0; i < 8 + comboCount; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 10 + Math.random() * 10,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 2 + Math.random() * intensity
+      });
+    }
+
+    // Energy streaks based on combo multiplier
+    if (comboCount >= 5) {
+      const streakCount = Math.min(Math.floor(comboCount / 5), 6);
+      for (let i = 0; i < streakCount; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 20 + Math.random() * 30;
+        const targetAng = ang + Math.PI;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(targetAng) * 6, y: Math.sin(targetAng) * 6 },
+          life: 12 + Math.random() * 8,
+          maxLife: 20,
+          color: comboCount >= 15 ? '#ffd700' : color,
+          size: 4 + Math.random() * 2
+        });
+      }
+    }
+
+    // Combo milestone effects
+    if (comboCount === 10 || comboCount === 25 || comboCount === 50) {
+      // Multi-ring explosion for milestones
+      for (let ring = 0; ring < 3; ring++) {
+        for (let i = 0; i < 20; i++) {
+          const ang = (i / 20) * Math.PI * 2;
+          const spd = 5 + ring * 3;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+            life: 20 + ring * 5,
+            maxLife: 35,
+            color: ring === 0 ? '#ffffff' : (ring === 1 ? '#ffd700' : color),
+            size: 5 - ring + Math.random() * 2
+          });
+        }
+      }
+
+      // Ascending celebration sparks
+      for (let i = 0; i < 20; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 40, y: pos.y },
+          vel: { x: (Math.random() - 0.5) * 4, y: -5 - Math.random() * 5 },
+          life: 35 + Math.random() * 25,
+          maxLife: 60,
+          color: ['#ffd700', '#ffffff', color][Math.floor(Math.random() * 3)],
+          size: 3 + Math.random() * 2
+        });
+      }
+
+      this.triggerScreenShake(6, 15);
+    }
   }
 
   private announce(text: string, color: string, priority: number) {
