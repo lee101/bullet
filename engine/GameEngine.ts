@@ -983,6 +983,7 @@ export class GameEngine {
     this.particles = this.particles.filter(p => p.life > 0);
     this.spawnWeatherParticles();
     this.spawnAmbientFireParticles();
+    this.spawnTownAmbientParticles();
     this.damageNumbers.forEach(dn => { dn.pos.y -= 1.0; dn.life--; });
     this.damageNumbers = this.damageNumbers.filter(dn => dn.life > 0);
     this.updateScreenShake();
@@ -1706,14 +1707,94 @@ export class GameEngine {
     const colors = ['#4af', '#f4a', '#4fa', '#fa4'];
     const colorIdx = colors.indexOf(p.color);
 
-    // Initial burst effect
-    this.createExplosion(pos, '#ff6622', 80, 15, 25);
-    this.createExplosion(pos, '#ffaa00', 60, 10, 20);
+    // Massive power surge effect
+    this.createLimitBreakActivationEffect(pos, p.color);
     this.addDamageNumber({ x: pos.x, y: pos.y - 50 }, 0, false, 'LIMIT BREAK!');
 
     // Boost stats during limit break
     p.damage *= 2;
     p.speed *= 1.5;
+  }
+
+  private createLimitBreakActivationEffect(pos: Vec2, playerColor: string) {
+    // Multi-stage explosion
+    for (let stage = 0; stage < 4; stage++) {
+      const count = 20 + stage * 5;
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI * 2 + stage * 0.2;
+        const spd = 5 + stage * 3;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 25 + stage * 8,
+          maxLife: 57,
+          color: stage === 0 ? '#ffffff' : stage === 1 ? '#ff6622' : stage === 2 ? '#ffaa00' : playerColor,
+          size: 5 - stage + Math.random() * 2
+        });
+      }
+    }
+
+    // Ascending energy pillars
+    for (let pillar = 0; pillar < 8; pillar++) {
+      const ang = (pillar / 8) * Math.PI * 2;
+      const dist = 40;
+      for (let i = 0; i < 6; i++) {
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: 0, y: -6 - i * 2 },
+          life: 30 + i * 5,
+          maxLife: 60,
+          color: i % 2 === 0 ? '#ff4400' : '#ffcc00',
+          size: 4 - i * 0.5
+        });
+      }
+    }
+
+    // Ground shockwave
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 24; i++) {
+        const ang = (i / 24) * Math.PI * 2;
+        const radius = 20 + ring * 20;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+          vel: { x: Math.cos(ang) * (6 + ring * 2), y: Math.sin(ang) * (6 + ring * 2) },
+          life: 15 + ring * 5,
+          maxLife: 30,
+          color: ring === 0 ? '#ffffff' : ring === 1 ? '#ffaa00' : '#ff4400',
+          size: 4 - ring
+        });
+      }
+    }
+
+    // Spiraling energy
+    for (let i = 0; i < 30; i++) {
+      const spiralAng = (i / 30) * Math.PI * 6;
+      const radius = 10 + i * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(spiralAng) * radius, y: pos.y + Math.sin(spiralAng) * radius },
+        vel: { x: Math.cos(spiralAng) * 2, y: -4 - Math.random() * 3 },
+        life: 35 + Math.random() * 20,
+        maxLife: 55,
+        color: playerColor,
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Central flash burst
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 15, y: Math.sin(ang) * 15 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 6
+      });
+    }
+
+    // Heavy screen shake
+    this.triggerScreenShake(15, 25);
   }
 
   private updateLimitBreak(pIdx: number) {
@@ -2002,9 +2083,10 @@ export class GameEngine {
     this.enemies = this.enemies.filter(e => {
         if (e.hp <= 0) {
             this.score += 600; this.enemiesKilledThisWave++;
-            // Death explosion VFX
+            // Death explosion VFX with type-specific effects
             const deathColor = ENEMY_TYPES[e.type]?.color || '#ff4444';
             this.createDeathExplosion(e.pos, deathColor, e.radius);
+            this.createEnemyTypeDeathEffect(e.pos, e.type, e.radius);
             this.spawnCoin(e.pos);
             const baseXp = 50 + Math.floor(e.maxHp / 5);
             this.players.forEach((p, i) => {
@@ -3084,6 +3166,131 @@ export class GameEngine {
     this.triggerScreenShake(Math.min(radius * 0.15, 8), 10);
   }
 
+  private createEnemyTypeDeathEffect(pos: Vec2, enemyType: string, radius: number) {
+    switch (enemyType) {
+      case 'MAGE':
+      case 'SPINNER':
+        // Magic dissipation
+        for (let i = 0; i < 12; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          this.particles.push({
+            pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + (Math.random() - 0.5) * 20 },
+            vel: { x: Math.cos(ang) * 2, y: -2 - Math.random() * 3 },
+            life: 30 + Math.random() * 20,
+            maxLife: 50,
+            color: ['#cc33ff', '#ff66ff', '#aa44ff'][Math.floor(Math.random() * 3)],
+            size: 3 + Math.random() * 2
+          });
+        }
+        break;
+
+      case 'GHOST':
+      case 'PHASER':
+        // Ethereal fade
+        for (let i = 0; i < 15; i++) {
+          this.particles.push({
+            pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y + (Math.random() - 0.5) * 30 },
+            vel: { x: (Math.random() - 0.5) * 1, y: -1.5 - Math.random() * 2 },
+            life: 40 + Math.random() * 30,
+            maxLife: 70,
+            color: '#aaccff',
+            size: 4 + Math.random() * 3
+          });
+        }
+        break;
+
+      case 'WOLF':
+      case 'DEER':
+      case 'SERPENT':
+        // Fur/scale particles
+        for (let i = 0; i < 8; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 2 + Math.random() * 3;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+            life: 25 + Math.random() * 15,
+            maxLife: 40,
+            color: enemyType === 'WOLF' ? '#664433' : enemyType === 'DEER' ? '#aa8866' : '#446644',
+            size: 2 + Math.random() * 2
+          });
+        }
+        break;
+
+      case 'TANK':
+      case 'ELITE':
+      case 'SHIELDER':
+        // Armor shatter
+        for (let i = 0; i < 10; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 3 + Math.random() * 4;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+            life: 30 + Math.random() * 20,
+            maxLife: 50,
+            color: i % 2 === 0 ? '#888888' : '#666666',
+            size: 3 + Math.random() * 3
+          });
+        }
+        // Metal sparks
+        for (let i = 0; i < 6; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * 5, y: Math.sin(ang) * 5 },
+            life: 10 + Math.random() * 8,
+            maxLife: 18,
+            color: '#ffcc44',
+            size: 2
+          });
+        }
+        break;
+
+      case 'HEALER':
+        // Healing energy release
+        for (let i = 0; i < 15; i++) {
+          this.particles.push({
+            pos: { x: pos.x + (Math.random() - 0.5) * 25, y: pos.y + (Math.random() - 0.5) * 25 },
+            vel: { x: (Math.random() - 0.5) * 2, y: -3 - Math.random() * 3 },
+            life: 35 + Math.random() * 20,
+            maxLife: 55,
+            color: i % 2 === 0 ? '#44ff88' : '#88ffaa',
+            size: 3 + Math.random() * 2
+          });
+        }
+        break;
+
+      case 'DRAGON_BOSS':
+        // Massive fire explosion
+        for (let i = 0; i < 30; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 4 + Math.random() * 8;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+            life: 40 + Math.random() * 30,
+            maxLife: 70,
+            color: ['#ff4400', '#ff6600', '#ffaa00', '#ffcc00'][Math.floor(Math.random() * 4)],
+            size: 5 + Math.random() * 5
+          });
+        }
+        // Smoke cloud
+        for (let i = 0; i < 15; i++) {
+          this.particles.push({
+            pos: { x: pos.x + (Math.random() - 0.5) * 50, y: pos.y + (Math.random() - 0.5) * 50 },
+            vel: { x: (Math.random() - 0.5) * 2, y: -1 - Math.random() * 2 },
+            life: 60 + Math.random() * 40,
+            maxLife: 100,
+            color: '#555555',
+            size: 8 + Math.random() * 6
+          });
+        }
+        this.triggerScreenShake(15, 25);
+        break;
+    }
+  }
+
   private createPlayerDeathEffect(pos: Vec2, playerColor: string) {
     // Dramatic expanding shockwave ring
     for (let ring = 0; ring < 3; ring++) {
@@ -3752,6 +3959,72 @@ export class GameEngine {
     });
   }
 
+  private spawnTownAmbientParticles() {
+    // Only spawn town particles periodically
+    if (this.frameCount % 8 !== 0) return;
+
+    const townPos = this.town.pos;
+    const distToTownSq = this.distSq({ x: this.camera.x + window.innerWidth / 2, y: this.camera.y + window.innerHeight / 2 }, townPos);
+
+    // Only spawn if camera is near town
+    if (distToTownSq > 500 * 500) return;
+
+    // Chimney smoke from town buildings
+    if (Math.random() < 0.4) {
+      const offsetX = (Math.random() - 0.5) * 200;
+      const offsetY = (Math.random() - 0.5) * 200;
+      this.particles.push({
+        pos: { x: townPos.x + offsetX, y: townPos.y + offsetY - 30 },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -0.6 - Math.random() * 0.4 },
+        life: 80 + Math.random() * 40,
+        maxLife: 120,
+        color: '#aaaaaa',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Market activity sparkles
+    if (Math.random() < 0.3) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 150;
+      this.particles.push({
+        pos: { x: townPos.x + Math.cos(ang) * dist, y: townPos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() * 1.5 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: Math.random() < 0.5 ? '#ffd700' : '#ffee88',
+        size: 1 + Math.random() * 1.5
+      });
+    }
+
+    // Wandering dust motes
+    if (Math.random() < 0.2) {
+      const offsetX = (Math.random() - 0.5) * 250;
+      const offsetY = (Math.random() - 0.5) * 250;
+      this.particles.push({
+        pos: { x: townPos.x + offsetX, y: townPos.y + offsetY },
+        vel: { x: 0.5 + Math.random() * 0.5, y: (Math.random() - 0.5) * 0.3 },
+        life: 60 + Math.random() * 40,
+        maxLife: 100,
+        color: '#ccaa88',
+        size: 1 + Math.random()
+      });
+    }
+
+    // Occasional banner flutter particles (colorful)
+    if (Math.random() < 0.15) {
+      const colors = ['#ff4444', '#4444ff', '#44ff44', '#ffff44', '#ff44ff'];
+      this.particles.push({
+        pos: { x: townPos.x + (Math.random() - 0.5) * 180, y: townPos.y + (Math.random() - 0.5) * 50 - 40 },
+        vel: { x: 1 + Math.random() * 1.5, y: (Math.random() - 0.5) * 0.5 },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2 + Math.random()
+      });
+    }
+  }
+
   private addDamageNumber(pos: Vec2, val: number, isCrit: boolean, text?: string) {
     this.damageNumbers.push({ id: this.nextId++, pos: {...pos}, value: Math.floor(val), color: isCrit ? '#ffcc00' : '#fff', life: 45, maxLife: 45, isCrit, text });
     // Extra particles for critical hits
@@ -4101,12 +4374,14 @@ export class GameEngine {
 
   private createShieldBlockEffect(pos: Vec2, incomingVel: Vec2) {
     const hitAngle = Math.atan2(incomingVel.y, incomingVel.x);
+    const impactPos = { x: pos.x + Math.cos(hitAngle + Math.PI) * 15, y: pos.y + Math.sin(hitAngle + Math.PI) * 15 };
+
     // Shield ring flash
     for (let i = 0; i < 12; i++) {
       const ang = hitAngle + Math.PI + (i - 6) * 0.15;
       const spd = 4 + Math.random() * 3;
       this.particles.push({
-        pos: { x: pos.x + Math.cos(hitAngle + Math.PI) * 15, y: pos.y + Math.sin(hitAngle + Math.PI) * 15 },
+        pos: { ...impactPos },
         vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
         life: 12 + Math.random() * 8,
         maxLife: 20,
@@ -4114,28 +4389,63 @@ export class GameEngine {
         size: 2 + Math.random() * 2
       });
     }
+
+    // Expanding ripple rings
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2;
+        const baseRadius = 10 + ring * 12;
+        this.particles.push({
+          pos: { x: impactPos.x + Math.cos(ang) * baseRadius, y: impactPos.y + Math.sin(ang) * baseRadius },
+          vel: { x: Math.cos(ang) * (3 + ring), y: Math.sin(ang) * (3 + ring) },
+          life: 12 + ring * 4,
+          maxLife: 24,
+          color: ring === 0 ? '#ffffff' : ring === 1 ? '#88ffff' : '#4df4ff',
+          size: 3 - ring
+        });
+      }
+    }
+
     // Central impact flash
     this.particles.push({
-      pos: { x: pos.x + Math.cos(hitAngle + Math.PI) * 12, y: pos.y + Math.sin(hitAngle + Math.PI) * 12 },
+      pos: { ...impactPos },
       vel: { x: 0, y: 0 },
-      life: 8,
-      maxLife: 8,
+      life: 10,
+      maxLife: 10,
       color: '#ffffff',
-      size: 8
+      size: 10
     });
-    // Deflection sparks
-    for (let i = 0; i < 6; i++) {
-      const deflectAng = hitAngle + Math.PI + (Math.random() - 0.5) * 1.5;
-      const spd = 6 + Math.random() * 4;
+
+    // Energy absorption effect - particles flowing into shield
+    for (let i = 0; i < 10; i++) {
+      const ang = hitAngle + (Math.random() - 0.5) * 1;
+      const dist = 40 + Math.random() * 30;
       this.particles.push({
-        pos: { ...pos },
+        pos: { x: impactPos.x + Math.cos(ang) * dist, y: impactPos.y + Math.sin(ang) * dist },
+        vel: { x: -Math.cos(ang) * 5, y: -Math.sin(ang) * 5 },
+        life: 12 + Math.random() * 6,
+        maxLife: 18,
+        color: '#aaddff',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Deflection sparks
+    for (let i = 0; i < 8; i++) {
+      const deflectAng = hitAngle + Math.PI + (Math.random() - 0.5) * 1.5;
+      const spd = 6 + Math.random() * 5;
+      this.particles.push({
+        pos: { ...impactPos },
         vel: { x: Math.cos(deflectAng) * spd, y: Math.sin(deflectAng) * spd },
         life: 10 + Math.random() * 5,
         maxLife: 15,
-        color: '#aaddff',
-        size: 1.5
+        color: '#ffffff',
+        size: 2
       });
     }
+
+    // Small screen shake on block
+    this.triggerScreenShake(2, 5);
   }
 
   private createMagicCastEffect(pos: Vec2, angle: number, element: MagicElement) {
