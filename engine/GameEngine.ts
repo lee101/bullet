@@ -6144,6 +6144,217 @@ export class GameEngine {
     this.triggerScreenShake(12, 25);
   }
 
+  private createFreezeEffect(pos: Vec2, radius: number) {
+    // Ice crystal formation
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const dist = radius * 0.8;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: Math.cos(ang) * 0.5, y: Math.sin(ang) * 0.5 - 0.5 },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: '#88ddff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Frost particles spreading
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * radius;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 1, y: -0.5 - Math.random() * 1 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: Math.random() > 0.5 ? '#aaeeff' : '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Ice shards jutting out
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 - 1 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#66ccff',
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    // Central freeze flash
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: '#ffffff',
+        size: 3 + Math.random()
+      });
+    }
+  }
+
+  private createGroundSlamEffect(pos: Vec2, radius: number, intensity: number = 1) {
+    // Expanding shockwave rings
+    for (let ring = 0; ring < 4; ring++) {
+      const pointCount = 32 - ring * 4;
+      for (let i = 0; i < pointCount; i++) {
+        const ang = (i / pointCount) * Math.PI * 2;
+        const spd = (4 + ring * 2) * intensity;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 12 + ring * 4,
+          maxLife: 20 + ring * 4,
+          color: ring === 0 ? '#ffffff' : (ring < 3 ? '#ffdd88' : '#aa8866'),
+          size: 4 - ring * 0.5
+        });
+      }
+    }
+
+    // Ground debris flying up
+    for (let i = 0; i < 25 * intensity; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * radius;
+      const upForce = 4 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 3, y: -upForce },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#8b7355',
+        size: 2 + Math.random() * 3
+      });
+    }
+
+    // Dust cloud
+    for (let i = 0; i < 15 * intensity; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * radius * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: Math.cos(ang) * 2, y: -1 - Math.random() * 2 },
+        life: 35 + Math.random() * 25,
+        maxLife: 60,
+        color: '#aa9977',
+        size: 5 + Math.random() * 4
+      });
+    }
+
+    // Impact cracks radiating
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      for (let j = 0; j < 4; j++) {
+        const dist = 10 + j * 15;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * 1, y: Math.sin(ang) * 1 },
+          life: 25 - j * 3,
+          maxLife: 25,
+          color: '#776655',
+          size: 3 - j * 0.5
+        });
+      }
+    }
+
+    this.triggerScreenShake(8 * intensity, 20 * intensity);
+  }
+
+  private createMagicMissileTrail(pos: Vec2, dir: Vec2, color: string) {
+    // Main sparkle trail
+    const perpX = -dir.y;
+    const perpY = dir.x;
+
+    for (let i = 0; i < 5; i++) {
+      const offset = (Math.random() - 0.5) * 10;
+      this.particles.push({
+        pos: { x: pos.x + perpX * offset, y: pos.y + perpY * offset },
+        vel: { x: -dir.x * 2 + (Math.random() - 0.5) * 1, y: -dir.y * 2 + (Math.random() - 0.5) * 1 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Inner glow particles
+    for (let i = 0; i < 3; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 6, y: pos.y + (Math.random() - 0.5) * 6 },
+        vel: { x: -dir.x * 1.5, y: -dir.y * 1.5 },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: '#ffffff',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Occasional larger spark
+    if (Math.random() < 0.3) {
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color,
+        size: 3 + Math.random() * 2
+      });
+    }
+  }
+
+  private createMeleeBloodSplatter(pos: Vec2, direction: Vec2, intensity: number = 1) {
+    const ang = Math.atan2(direction.y, direction.x);
+
+    // Blood droplets in hit direction
+    for (let i = 0; i < 8 * intensity; i++) {
+      const spreadAng = ang + (Math.random() - 0.5) * 1.2;
+      const spd = 3 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(spreadAng) * spd, y: Math.sin(spreadAng) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: Math.random() > 0.3 ? '#cc2222' : '#880000',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Mist spray
+    for (let i = 0; i < 5 * intensity; i++) {
+      const spreadAng = ang + (Math.random() - 0.5) * 0.8;
+      const spd = 2 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(spreadAng) * spd, y: Math.sin(spreadAng) * spd },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#aa3333',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Dripping particles (fall with gravity)
+    for (let i = 0; i < 4 * intensity; i++) {
+      const offsetAng = ang + (Math.random() - 0.5) * 0.6;
+      const dist = 5 + Math.random() * 10;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(offsetAng) * dist, y: pos.y + Math.sin(offsetAng) * dist },
+        vel: { x: (Math.random() - 0.5) * 1, y: 1 + Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#991111',
+        size: 2 + Math.random()
+      });
+    }
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
