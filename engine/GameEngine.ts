@@ -550,7 +550,34 @@ export class GameEngine {
     this.enemiesSpawned = 0;
     this.enemiesKilledThisWave = 0;
     this.money += this.town.goldGeneration;
+    // Wave start visual effects
+    this.playerPositions.forEach((pos, i) => {
+      if (!this.players[i].isDead) {
+        this.createWaveStartEffect(pos, waveNum);
+      }
+    });
     if (waveNum % 5 === 0) this.spawnBoss();
+  }
+
+  private createWaveStartEffect(pos: Vec2, waveNum: number) {
+    // Expanding ring effect
+    const ringCount = Math.min(3, Math.ceil(waveNum / 5));
+    for (let ring = 0; ring < ringCount; ring++) {
+      const delay = ring * 5;
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2;
+        const baseRadius = 30 + ring * 20;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * baseRadius, y: pos.y + Math.sin(ang) * baseRadius },
+          vel: { x: Math.cos(ang) * (4 + ring), y: Math.sin(ang) * (4 + ring) },
+          life: 25 + delay,
+          maxLife: 25 + delay,
+          color: waveNum % 5 === 0 ? '#ff4444' : '#44aaff',
+          size: 3 - ring * 0.5
+        });
+      }
+    }
+    this.triggerScreenShake(3, 8);
   }
 
   private spawnBoss() {
@@ -565,7 +592,54 @@ export class GameEngine {
         angle: 0, visionCone: 0, visionRange: 0, canFly: true, fireBreathCooldown: 0
     });
     this.enemiesSpawned++;
+    // Boss entrance VFX
+    this.createBossEntranceEffect(spawnPos);
     this.announce('DRAGON BOSS APPROACHES!', '#ff2200', 3);
+  }
+
+  private createBossEntranceEffect(pos: Vec2) {
+    // Massive explosion effect
+    for (let i = 0; i < 50; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 8;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: i % 3 === 0 ? '#ff2200' : i % 3 === 1 ? '#ff8800' : '#ffcc00',
+        size: 4 + Math.random() * 5
+      });
+    }
+    // Dark portal ring
+    for (let i = 0; i < 24; i++) {
+      const ang = (i / 24) * Math.PI * 2;
+      const radius = 80;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 50,
+        maxLife: 50,
+        color: '#880000',
+        size: 6
+      });
+    }
+    // Ground crack lines
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      for (let j = 0; j < 5; j++) {
+        const dist = 20 + j * 25;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * 1, y: Math.sin(ang) * 1 },
+          life: 60 - j * 5,
+          maxLife: 60,
+          color: '#ff4400',
+          size: 3
+        });
+      }
+    }
+    this.triggerScreenShake(12, 30);
   }
 
   private hasLineOfSight(from: Vec2, to: Vec2): boolean {
@@ -896,15 +970,17 @@ export class GameEngine {
     this.damageNumbers.forEach(dn => { dn.pos.y -= 1.0; dn.life--; });
     this.damageNumbers = this.damageNumbers.filter(dn => dn.life > 0);
     this.updateScreenShake();
-    this.coins.forEach(c => { 
-        c.pos.x += c.vel.x; c.pos.y += c.vel.y; 
+    this.coins.forEach(c => {
+        c.pos.x += c.vel.x; c.pos.y += c.vel.y;
         this.playerPositions.forEach((pp, i) => {
             if (this.distSq(c.pos, pp) < 120*120) {
                 const dx = pp.x - c.pos.x, dy = pp.y - c.pos.y, d = Math.sqrt(dx*dx+dy*dy);
                 c.vel.x += (dx/d)*0.4; c.vel.y += (dy/d)*0.4;
             }
             if (this.distSq(c.pos, pp) < 30*30) {
-                this.money += c.value; c.life = 0;
+                this.money += c.value;
+                this.createCoinPickupEffect(c.pos, c.value);
+                c.life = 0;
             }
         });
     });
@@ -2284,10 +2360,19 @@ export class GameEngine {
       if (b.playerId === -2) {
         this.playerPositions.forEach((pp, i) => {
           if (!this.players[i].isDead && this.distSq(b.pos, pp) < (b.radius + PLAYER_RADIUS)**2) {
-            this.players[i].hp -= b.damage;
-            this.addDamageNumber(pp, b.damage, false);
-            this.createImpactSparks(b.pos, '#ff4444', b.vel);
-            this.triggerScreenShake(3, 8);
+            const p = this.players[i];
+            if (p.isBlocking) {
+              // Shield blocked - reduced damage and special VFX
+              const blockedDamage = Math.floor(b.damage * 0.3);
+              p.hp -= blockedDamage;
+              this.addDamageNumber(pp, blockedDamage, false, 'BLOCKED');
+              this.createShieldBlockEffect(pp, b.vel);
+            } else {
+              p.hp -= b.damage;
+              this.addDamageNumber(pp, b.damage, false);
+              this.createImpactSparks(b.pos, '#ff4444', b.vel);
+              this.triggerScreenShake(3, 8);
+            }
             b.life = 0;
           }
         });
@@ -2441,7 +2526,39 @@ export class GameEngine {
       visionCone: config.visionCone,
       visionRange: config.visionRange
     });
+    // Enemy spawn portal effect (occasional, not every spawn)
+    if (Math.random() < 0.3) {
+      this.createSpawnPortalEffect(pos, config.color);
+    }
     this.enemiesSpawned++;
+  }
+
+  private createSpawnPortalEffect(pos: Vec2, color: string) {
+    // Swirl effect
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const radius = 20 + Math.random() * 10;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: -Math.sin(ang) * 3, y: Math.cos(ang) * 3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: color || '#880088',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Center flash
+    for (let i = 0; i < 5; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 10,
+        maxLife: 10,
+        color: '#aa44aa',
+        size: 3
+      });
+    }
   }
 
   private createExplosion(pos: Vec2, color: string, count: number, force: number, maxSize: number) {
@@ -2591,6 +2708,73 @@ export class GameEngine {
         maxLife: 20,
         color,
         size: 1 + Math.random() * 1.5
+      });
+    }
+  }
+
+  private createCoinPickupEffect(pos: Vec2, value: number) {
+    // Golden sparkles
+    const count = 6 + Math.floor(value / 20);
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: i % 2 === 0 ? '#ffd700' : '#ffee88',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Rising sparkle trail
+    for (let i = 0; i < 4; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -4 - Math.random() * 2 },
+        life: 20 + i * 3,
+        maxLife: 32,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+  }
+
+  private createShieldBlockEffect(pos: Vec2, incomingVel: Vec2) {
+    const hitAngle = Math.atan2(incomingVel.y, incomingVel.x);
+    // Shield ring flash
+    for (let i = 0; i < 12; i++) {
+      const ang = hitAngle + Math.PI + (i - 6) * 0.15;
+      const spd = 4 + Math.random() * 3;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(hitAngle + Math.PI) * 15, y: pos.y + Math.sin(hitAngle + Math.PI) * 15 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: i % 2 === 0 ? '#4df4ff' : '#88ffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Central impact flash
+    this.particles.push({
+      pos: { x: pos.x + Math.cos(hitAngle + Math.PI) * 12, y: pos.y + Math.sin(hitAngle + Math.PI) * 12 },
+      vel: { x: 0, y: 0 },
+      life: 8,
+      maxLife: 8,
+      color: '#ffffff',
+      size: 8
+    });
+    // Deflection sparks
+    for (let i = 0; i < 6; i++) {
+      const deflectAng = hitAngle + Math.PI + (Math.random() - 0.5) * 1.5;
+      const spd = 6 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(deflectAng) * spd, y: Math.sin(deflectAng) * spd },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#aaddff',
+        size: 1.5
       });
     }
   }
