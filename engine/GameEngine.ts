@@ -789,6 +789,10 @@ export class GameEngine {
           const dustColor = biome === 'SNOW' ? '#ffffff' : biome === 'SHORE' ? '#ddcc99' : '#aa9977';
           this.createFootstepDust(pos, dustColor);
         }
+        // Water ripples when on boat
+        if (moveDist > 1 && p.mount === 'BOAT' && this.frameCount % 12 === 0) {
+          this.createWaterRipple(pos);
+        }
 
         // Driver updates mount position
         if (currentMount && isDriver) {
@@ -1745,7 +1749,12 @@ export class GameEngine {
             let angleDiff = Math.abs(angleToPlayer - e.angle);
             while (angleDiff > Math.PI) angleDiff = Math.abs(angleDiff - Math.PI * 2);
             if (angleDiff < e.visionCone) {
+              const wasAggressive = e.isAggressive;
               e.isAggressive = true;
+              // Aggro indicator VFX when enemy first spots player
+              if (!wasAggressive) {
+                this.createAggroIndicator(e.pos);
+              }
             }
           }
         });
@@ -2558,6 +2567,53 @@ export class GameEngine {
         maxLife: 10,
         color: '#aa44aa',
         size: 3
+      });
+    }
+  }
+
+  private createFireBreathEffect(pos: Vec2, angle: number) {
+    // Fire stream particles
+    for (let i = 0; i < 40; i++) {
+      const spread = (Math.random() - 0.5) * 0.8;
+      const dist = 30 + Math.random() * 400;
+      const spd = 8 + Math.random() * 6;
+      const ang = angle + spread * (1 - dist / 500);
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(angle) * 30, y: pos.y + Math.sin(angle) * 30 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: i % 3 === 0 ? '#ff2200' : i % 3 === 1 ? '#ff8800' : '#ffcc00',
+        size: 4 + Math.random() * 4
+      });
+    }
+    // Smoke trail
+    for (let i = 0; i < 15; i++) {
+      const spread = (Math.random() - 0.5) * 0.5;
+      const spd = 3 + Math.random() * 3;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(angle) * 50, y: pos.y + Math.sin(angle) * 50 },
+        vel: { x: Math.cos(angle + spread) * spd, y: Math.sin(angle + spread) * spd - 1 },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: '#444444',
+        size: 6 + Math.random() * 4
+      });
+    }
+    this.triggerScreenShake(6, 20);
+  }
+
+  private createWaterRipple(pos: Vec2) {
+    // Expanding ring of water particles
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 1 },
+        life: 20,
+        maxLife: 20,
+        color: '#4488aa',
+        size: 2
       });
     }
   }
