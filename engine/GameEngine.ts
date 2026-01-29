@@ -5694,6 +5694,226 @@ export class GameEngine {
     }
   }
 
+  private createHazardWarningEffect(pos: Vec2, radius: number, hazardType: string) {
+    // Pulsing danger ring
+    for (let pulse = 0; pulse < 3; pulse++) {
+      const pulseDelay = pulse * 5;
+      for (let i = 0; i < 32; i++) {
+        const ang = (i / 32) * Math.PI * 2;
+        const r = radius * (0.8 + pulse * 0.2);
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+          vel: { x: Math.cos(ang) * (1 + pulse * 0.5), y: Math.sin(ang) * (1 + pulse * 0.5) },
+          life: 20 + pulseDelay,
+          maxLife: 30,
+          color: hazardType === 'fire' ? '#ff4400' : (hazardType === 'poison' ? '#44ff00' : '#ff0000'),
+          size: 3 - pulse * 0.5
+        });
+      }
+    }
+
+    // Warning exclamation particles rising
+    for (let i = 0; i < 8; i++) {
+      const offsetX = (Math.random() - 0.5) * radius;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y },
+        vel: { x: offsetX * 0.02, y: -3 - Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffff00',
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    // Ground shimmer effect
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * radius * 0.8;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() * 2 },
+        life: 15 + Math.random() * 20,
+        maxLife: 35,
+        color: '#ffaa00',
+        size: 2 + Math.random() * 2
+      });
+    }
+  }
+
+  private createRevivalEffect(pos: Vec2, playerColor: string) {
+    // Angelic light beam descending
+    for (let i = 0; i < 20; i++) {
+      const x = pos.x + (Math.random() - 0.5) * 30;
+      this.particles.push({
+        pos: { x, y: pos.y - 100 - Math.random() * 50 },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: 4 + Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Golden revival ring expanding
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 24; i++) {
+        const ang = (i / 24) * Math.PI * 2;
+        const spd = 3 + ring * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 20 + ring * 8,
+          maxLife: 36 + ring * 8,
+          color: ring === 0 ? '#ffffff' : (ring === 1 ? '#ffd700' : playerColor),
+          size: 4 - ring + Math.random()
+        });
+      }
+    }
+
+    // Soul particles reforming (converging inward)
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 50 + Math.random() * 40;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: -Math.cos(ang) * 3, y: -Math.sin(ang) * 3 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: playerColor,
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Rising hope sparkles
+    for (let i = 0; i < 15; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 40, y: pos.y + (Math.random() - 0.5) * 20 },
+        vel: { x: (Math.random() - 0.5) * 2, y: -2 - Math.random() * 3 },
+        life: 35 + Math.random() * 25,
+        maxLife: 60,
+        color: '#ffee88',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Gentle screen shake
+    this.triggerScreenShake(4, 12);
+  }
+
+  private createFactionBannerClaimEffect(pos: Vec2, factionColor: string) {
+    // Banner unfurling - vertical cascade
+    for (let i = 0; i < 30; i++) {
+      const delay = Math.floor(i / 3);
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y - 40 },
+        vel: { x: (Math.random() - 0.5) * 1, y: 2 + Math.random() * 2 },
+        life: 25 + delay * 3 + Math.random() * 10,
+        maxLife: 50,
+        color: factionColor,
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    // Territorial burst ring
+    for (let i = 0; i < 40; i++) {
+      const ang = (i / 40) * Math.PI * 2;
+      const spd = 4 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: i % 2 === 0 ? factionColor : '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Victory confetti
+    const confettiColors = [factionColor, '#ffffff', '#ffd700'];
+    for (let i = 0; i < 25; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y - 20 },
+        vel: { x: Math.cos(ang) * spd, y: -2 - Math.random() * 3 },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Ground claim pulse
+    for (let ring = 0; ring < 2; ring++) {
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2;
+        const radius = 30 + ring * 25;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+          vel: { x: Math.cos(ang) * 1.5, y: Math.sin(ang) * 1.5 },
+          life: 20 + ring * 10,
+          maxLife: 35,
+          color: factionColor,
+          size: 3 - ring
+        });
+      }
+    }
+
+    this.triggerScreenShake(5, 12);
+  }
+
+  private createAllyBuffAuraEffect(pos: Vec2, buffType: string) {
+    // Buff-specific colors
+    const buffColors: Record<string, string[]> = {
+      attack: ['#ff4444', '#ff8888', '#ffcccc'],
+      defense: ['#4488ff', '#88aaff', '#aaccff'],
+      speed: ['#ffff44', '#ffff88', '#ffffcc'],
+      heal: ['#44ff44', '#88ff88', '#aaffaa'],
+      mana: ['#aa44ff', '#cc88ff', '#ddaaff']
+    };
+    const colors = buffColors[buffType] || buffColors.attack;
+
+    // Rotating aura particles
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const radius = 20;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 2, y: Math.sin(ang + Math.PI / 2) * 2 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: colors[0],
+        size: 3 + Math.random()
+      });
+    }
+
+    // Rising buff energy
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y + 10 },
+        vel: { x: (Math.random() - 0.5) * 1, y: -2 - Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: colors[1],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Inner glow pulse
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random();
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: colors[2],
+        size: 2 + Math.random()
+      });
+    }
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
