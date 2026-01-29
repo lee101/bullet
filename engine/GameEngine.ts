@@ -5914,6 +5914,236 @@ export class GameEngine {
     }
   }
 
+  private createPortalActivationEffect(pos: Vec2, portalColor: string, isEntry: boolean) {
+    // Swirling vortex particles
+    for (let i = 0; i < 30; i++) {
+      const ang = (i / 30) * Math.PI * 2;
+      const radius = 15 + Math.random() * 25;
+      const rotSpeed = isEntry ? 3 : -3;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang + Math.PI / 2) * rotSpeed, y: Math.sin(ang + Math.PI / 2) * rotSpeed },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: portalColor,
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Central energy implosion/explosion
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = isEntry ? 40 : 0;
+      const targetDist = isEntry ? 0 : 40;
+      const speed = 4;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: {
+          x: isEntry ? -Math.cos(ang) * speed : Math.cos(ang) * speed,
+          y: isEntry ? -Math.sin(ang) * speed : Math.sin(ang) * speed
+        },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Arcane runes orbiting
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      const radius = 35;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 2, y: Math.sin(ang + Math.PI / 2) * 2 - 1 },
+        life: 30 + Math.random() * 10,
+        maxLife: 40,
+        color: '#aa88ff',
+        size: 4 + Math.random()
+      });
+    }
+
+    // Dimensional shimmer
+    for (let i = 0; i < 12; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 50, y: pos.y + (Math.random() - 0.5) * 50 },
+        vel: { x: (Math.random() - 0.5) * 2, y: -1 - Math.random() * 2 },
+        life: 20 + Math.random() * 20,
+        maxLife: 40,
+        color: i % 2 === 0 ? portalColor : '#ccccff',
+        size: 2 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(3, 8);
+  }
+
+  private createBulletDeflectionEffect(pos: Vec2, incomingDir: Vec2, outgoingDir: Vec2) {
+    // Impact flash
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Incoming trail sparks
+    const inAng = Math.atan2(incomingDir.y, incomingDir.x);
+    for (let i = 0; i < 6; i++) {
+      const spreadAng = inAng + (Math.random() - 0.5) * 0.5;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(spreadAng) * 4, y: Math.sin(spreadAng) * 4 },
+        life: 10 + Math.random() * 6,
+        maxLife: 16,
+        color: '#ffaa44',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Outgoing reflection trail
+    const outAng = Math.atan2(outgoingDir.y, outgoingDir.x);
+    for (let i = 0; i < 8; i++) {
+      const spreadAng = outAng + (Math.random() - 0.5) * 0.4;
+      const spd = 5 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(spreadAng) * spd, y: Math.sin(spreadAng) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: '#88ccff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Shield/deflector ring pulse
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const spd = 2 + Math.random();
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#aaddff',
+        size: 2 + Math.random()
+      });
+    }
+  }
+
+  private spawnPoisonPuddleAmbient(pos: Vec2, radius: number) {
+    // Bubbling effect
+    for (let i = 0; i < 3; i++) {
+      const offsetX = (Math.random() - 0.5) * radius;
+      const offsetY = (Math.random() - 0.5) * radius * 0.5;
+      // Only spawn within puddle
+      if (offsetX * offsetX + offsetY * offsetY * 4 > radius * radius) continue;
+
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y + offsetY },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -0.8 - Math.random() * 0.6 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: Math.random() > 0.5 ? '#44ff00' : '#88ff44',
+        size: 2 + Math.random() * 3
+      });
+    }
+
+    // Toxic mist rising
+    if (Math.random() < 0.3) {
+      const offsetX = (Math.random() - 0.5) * radius * 0.8;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -0.5 - Math.random() * 0.5 },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: '#66aa22',
+        size: 4 + Math.random() * 3
+      });
+    }
+  }
+
+  private createMeteorStrikeEffect(pos: Vec2, radius: number) {
+    // Pre-impact warning glow
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: -Math.cos(ang) * 2, y: -Math.sin(ang) * 2 },
+        life: 15,
+        maxLife: 15,
+        color: '#ff6600',
+        size: 3
+      });
+    }
+
+    // Meteor trail descending
+    for (let i = 0; i < 25; i++) {
+      const height = 80 + i * 8;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y - height },
+        vel: { x: (Math.random() - 0.5) * 3, y: 10 + Math.random() * 5 },
+        life: 8 + i * 0.8,
+        maxLife: 28,
+        color: i % 3 === 0 ? '#ff2200' : (i % 3 === 1 ? '#ff6600' : '#ffaa00'),
+        size: 5 + Math.random() * 3
+      });
+    }
+
+    // Impact explosion
+    for (let i = 0; i < 50; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 4 + Math.random() * 8;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 25 + Math.random() * 20,
+        maxLife: 45,
+        color: i % 4 === 0 ? '#ffffff' : (i % 2 === 0 ? '#ff4400' : '#ff8800'),
+        size: 4 + Math.random() * 4
+      });
+    }
+
+    // Ground debris
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * radius, y: pos.y },
+        vel: { x: Math.cos(ang) * spd, y: -3 - Math.random() * 4 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#8b7355',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Expanding shockwave rings
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 24; i++) {
+        const ang = (i / 24) * Math.PI * 2;
+        const spd = 5 + ring * 3;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + ring * 5,
+          maxLife: 25 + ring * 5,
+          color: ring === 0 ? '#ffffff' : (ring === 1 ? '#ffaa00' : '#ff4400'),
+          size: 3 - ring * 0.5
+        });
+      }
+    }
+
+    // Heavy screen shake
+    this.triggerScreenShake(12, 25);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
