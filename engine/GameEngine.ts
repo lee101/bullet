@@ -1227,12 +1227,12 @@ export class GameEngine {
               break;
             case 'SPEED_BOOST':
               p.speed += 0.2;
-              this.createExplosion(pk.pos, '#00ff88', 10, 2, 4);
+              this.createPowerUpEffect(pk.pos, '#00ff88', 'SPEED');
               this.addDamageNumber(pk.pos, 0, true, '+SPEED');
               break;
             case 'DAMAGE_BOOST':
               p.damage += 5;
-              this.createExplosion(pk.pos, '#ff8800', 10, 2, 4);
+              this.createPowerUpEffect(pk.pos, '#ff8800', 'DAMAGE');
               this.addDamageNumber(pk.pos, 5, true, '+5 DMG');
               break;
             case 'CHEST':
@@ -2949,6 +2949,47 @@ export class GameEngine {
         size: 2
       });
     }
+  }
+
+  private createPowerUpEffect(pos: Vec2, color: string, type: string) {
+    // Spiral ascending particles
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 4;
+      const radius = 5 + i * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * 5 },
+        vel: { x: Math.cos(ang) * 1.5, y: -3 - Math.random() * 2 },
+        life: 30 + i * 2,
+        maxLife: 50,
+        color,
+        size: 3 - i * 0.1
+      });
+    }
+    // Central burst
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 5, y: Math.sin(ang) * 5 },
+        life: 20,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 3
+      });
+    }
+    // Outer ring
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 30, y: pos.y + Math.sin(ang) * 30 },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 25,
+        maxLife: 25,
+        color,
+        size: 4
+      });
+    }
+    this.triggerScreenShake(4, 10);
   }
 
   private createShieldBlockEffect(pos: Vec2, incomingVel: Vec2) {
