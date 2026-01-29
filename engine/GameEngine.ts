@@ -1635,9 +1635,10 @@ export class GameEngine {
         break;
 
       case 'TELEPORT':
+        const teleportStart = { x: pos.x, y: pos.y };
         pos.x += Math.cos(ang) * spellData.range;
         pos.y += Math.sin(ang) * spellData.range;
-        this.createExplosion(pos, '#cc33ff', 25, 4, 8);
+        this.createTeleportPortalEffect(teleportStart, pos);
         break;
 
       case 'SHIELD':
@@ -2290,24 +2291,54 @@ export class GameEngine {
           if (d < 400 && d > 100) {
             e.chargeState = 'windup';
             e.chargeTimer = 60;
-            this.createExplosion(e.pos, '#ff4444', 8, 1, 3);
+            this.createChargeWindupEffect(e.pos);
           }
-        } else if (e.chargeState === 'windup' && e.chargeTimer <= 0) {
-          e.chargeState = 'charging';
-          e.chargeTimer = 30;
-          if (target) {
-            const dx = target.x - e.pos.x, dy = target.y - e.pos.y;
-            const d = Math.sqrt(dx*dx + dy*dy);
-            e.chargeDir = { x: dx/d, y: dy/d };
+        } else if (e.chargeState === 'windup') {
+          // Windup particles - energy gathering
+          if (this.frameCount % 4 === 0) {
+            const ang = Math.random() * Math.PI * 2;
+            const dist = 30 + Math.random() * 20;
+            this.particles.push({
+              pos: { x: e.pos.x + Math.cos(ang) * dist, y: e.pos.y + Math.sin(ang) * dist },
+              vel: { x: -Math.cos(ang) * 3, y: -Math.sin(ang) * 3 },
+              life: 12,
+              maxLife: 12,
+              color: e.chargeTimer > 30 ? '#ff8844' : '#ff4444',
+              size: 2 + Math.random()
+            });
+          }
+          if (e.chargeTimer <= 0) {
+            e.chargeState = 'charging';
+            e.chargeTimer = 30;
+            if (target) {
+              const dx = target.x - e.pos.x, dy = target.y - e.pos.y;
+              const d = Math.sqrt(dx*dx + dy*dy);
+              e.chargeDir = { x: dx/d, y: dy/d };
+            }
+            // Charge launch burst
+            this.createChargeLaunchEffect(e.pos, e.chargeDir || { x: 1, y: 0 });
           }
         } else if (e.chargeState === 'charging') {
           if (e.chargeDir) {
             e.pos.x += e.chargeDir.x * 12;
             e.pos.y += e.chargeDir.y * 12;
+            // Charge trail particles
+            if (this.frameCount % 2 === 0) {
+              this.particles.push({
+                pos: { x: e.pos.x + (Math.random() - 0.5) * 15, y: e.pos.y + (Math.random() - 0.5) * 15 },
+                vel: { x: -e.chargeDir.x * 2 + (Math.random() - 0.5) * 2, y: -e.chargeDir.y * 2 + (Math.random() - 0.5) * 2 },
+                life: 15 + Math.random() * 10,
+                maxLife: 25,
+                color: Math.random() < 0.5 ? '#ff4444' : '#ffaa44',
+                size: 3 + Math.random() * 2
+              });
+            }
           }
           if (e.chargeTimer <= 0) {
             e.chargeState = 'idle';
             e.chargeTimer = 120;
+            // Charge end skid effect
+            this.createChargeEndEffect(e.pos);
           }
         }
         break;
@@ -2494,6 +2525,15 @@ export class GameEngine {
             b.life = 0;
           }
         });
+      }
+    });
+    // Check for water splash when bullets expire
+    this.bullets.forEach(b => {
+      if (b.life <= 0) {
+        const biome = this.world.getBiomeAt(b.pos.x, b.pos.y);
+        if (biome === 'SEA' && this.isInSimRange(b.pos, 200)) {
+          this.createWaterSplash(b.pos, 0.6);
+        }
       }
     });
     this.bullets = this.bullets.filter(b => b.life > 0);
@@ -2705,16 +2745,160 @@ export class GameEngine {
   }
 
   private createWaterRipple(pos: Vec2) {
-    // Expanding ring of water particles
+    // Multi-layer expanding rings
+    for (let ring = 0; ring < 2; ring++) {
+      for (let i = 0; i < 10; i++) {
+        const ang = (i / 10) * Math.PI * 2;
+        const spd = 2 + ring;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * (5 + ring * 5), y: pos.y + Math.sin(ang) * (3 + ring * 3) },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd * 0.5 },
+          life: 18 + ring * 5,
+          maxLife: 28,
+          color: ring === 0 ? '#88ccff' : '#4488aa',
+          size: 2 + Math.random()
+        });
+      }
+    }
+    // Small water droplets
+    for (let i = 0; i < 4; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 1.5, y: -1 - Math.random() * 1.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aaddff',
+        size: 1 + Math.random()
+      });
+    }
+  }
+
+  private createWaterSplash(pos: Vec2, intensity: number = 1) {
+    // Water droplets spraying upward
+    const dropletCount = Math.floor(8 * intensity);
+    for (let i = 0; i < dropletCount; i++) {
+      const ang = Math.PI * (0.5 + (Math.random() - 0.5) * 0.8);
+      const spd = (2 + Math.random() * 4) * intensity;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: i % 2 === 0 ? '#88ccff' : '#aaddff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Splash foam
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 8, y: pos.y + Math.sin(ang) * 4 },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 1.5 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Expanding splash ring
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 4, y: Math.sin(ang) * 2 },
+        life: 15,
+        maxLife: 15,
+        color: '#66aadd',
+        size: 2
+      });
+    }
+  }
+
+  private createChargeWindupEffect(pos: Vec2) {
+    // Warning indicator - pulsing ring
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 20, y: pos.y + Math.sin(ang) * 20 },
+        vel: { x: Math.cos(ang) * 1.5, y: Math.sin(ang) * 1.5 },
+        life: 20,
+        maxLife: 20,
+        color: '#ff6644',
+        size: 3
+      });
+    }
+    // Ground stomp effect
     for (let i = 0; i < 8; i++) {
       const ang = (i / 8) * Math.PI * 2;
       this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 10, y: pos.y + 10 + Math.sin(ang) * 5 },
+        vel: { x: Math.cos(ang) * 3, y: -0.5 + Math.sin(ang) * 1.5 },
+        life: 15,
+        maxLife: 15,
+        color: '#aa8866',
+        size: 2 + Math.random()
+      });
+    }
+  }
+
+  private createChargeLaunchEffect(pos: Vec2, dir: Vec2) {
+    // Burst behind charger
+    const backAng = Math.atan2(-dir.y, -dir.x);
+    for (let i = 0; i < 15; i++) {
+      const ang = backAng + (Math.random() - 0.5) * 1.5;
+      const spd = 4 + Math.random() * 4;
+      this.particles.push({
         pos: { ...pos },
-        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 1 },
-        life: 20,
-        maxLife: 20,
-        color: '#4488aa',
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: i % 2 === 0 ? '#ff4444' : '#ffaa44',
+        size: 3 + Math.random() * 2
+      });
+    }
+    // Speed lines in direction of charge
+    for (let i = 0; i < 6; i++) {
+      const offset = (Math.random() - 0.5) * 20;
+      const perpAng = Math.atan2(dir.y, dir.x) + Math.PI / 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(perpAng) * offset, y: pos.y + Math.sin(perpAng) * offset },
+        vel: { x: dir.x * 8, y: dir.y * 8 },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#ffffff',
         size: 2
+      });
+    }
+    // Small screen shake on launch
+    this.triggerScreenShake(4, 8);
+  }
+
+  private createChargeEndEffect(pos: Vec2) {
+    // Skid dust cloud
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + 10 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd * 0.3 - 1 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#aa9977',
+        size: 4 + Math.random() * 3
+      });
+    }
+    // Ground impact sparks
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.PI * (0.7 + Math.random() * 0.6);
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + 5 },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: '#ffaa44',
+        size: 2 + Math.random()
       });
     }
   }
@@ -3108,6 +3292,111 @@ export class GameEngine {
           });
         }
     }
+  }
+
+  private createTeleportPortalEffect(startPos: Vec2, endPos: Vec2) {
+    // Entry portal - imploding
+    for (let ring = 0; ring < 2; ring++) {
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2 + ring * 0.2;
+        const radius = 30 - ring * 10;
+        this.particles.push({
+          pos: { x: startPos.x + Math.cos(ang) * radius, y: startPos.y + Math.sin(ang) * radius },
+          vel: { x: -Math.cos(ang) * 3, y: -Math.sin(ang) * 3 },
+          life: 20 + ring * 5,
+          maxLife: 30,
+          color: ring === 0 ? '#cc33ff' : '#ffffff',
+          size: 3 - ring
+        });
+      }
+    }
+
+    // Entry portal swirl
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 4;
+      const dist = 10 + i;
+      this.particles.push({
+        pos: { x: startPos.x + Math.cos(ang) * dist, y: startPos.y + Math.sin(ang) * dist },
+        vel: { x: -Math.cos(ang) * 2, y: -Math.sin(ang) * 2 - 1 },
+        life: 15 + i,
+        maxLife: 35,
+        color: '#ff88ff',
+        size: 2
+      });
+    }
+
+    // Entry flash
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...startPos },
+        vel: { x: Math.cos(ang) * 6, y: Math.sin(ang) * 6 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 4
+      });
+    }
+
+    // Exit portal - exploding
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 18; i++) {
+        const ang = (i / 18) * Math.PI * 2 + ring * 0.15;
+        const spd = 3 + ring * 2;
+        this.particles.push({
+          pos: { ...endPos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 20 + ring * 8,
+          maxLife: 44,
+          color: ring === 0 ? '#ffffff' : ring === 1 ? '#cc33ff' : '#8822cc',
+          size: 4 - ring
+        });
+      }
+    }
+
+    // Exit portal spiral
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 4;
+      this.particles.push({
+        pos: { ...endPos },
+        vel: { x: Math.cos(ang) * (2 + i * 0.2), y: Math.sin(ang) * (2 + i * 0.2) - 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ff66ff',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Arcane runes around exit
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const dist = 40;
+      this.particles.push({
+        pos: { x: endPos.x + Math.cos(ang) * dist, y: endPos.y + Math.sin(ang) * dist },
+        vel: { x: 0, y: -3 },
+        life: 30,
+        maxLife: 30,
+        color: '#cc33ff',
+        size: 4
+      });
+    }
+
+    // Connecting line particles (fast moving from start to end)
+    const dx = endPos.x - startPos.x;
+    const dy = endPos.y - startPos.y;
+    for (let i = 0; i < 10; i++) {
+      this.particles.push({
+        pos: { x: startPos.x + dx * 0.2, y: startPos.y + dy * 0.2 },
+        vel: { x: dx * 0.15, y: dy * 0.15 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+
+    // Screen shake on teleport
+    this.triggerScreenShake(5, 10);
   }
 
   private createSpellCastEffect(pos: Vec2, spellType: string, color: string) {
@@ -4021,6 +4310,120 @@ export class GameEngine {
            pos.y <= this.camera.y + window.innerHeight + margin;
   }
 
+  private createSiegeStartEffect(pos: Vec2, enemyAttack: boolean) {
+    const color = enemyAttack ? '#ff4444' : '#ffaa00';
+
+    // Warning pulses expanding outward
+    for (let ring = 0; ring < 4; ring++) {
+      for (let i = 0; i < 24; i++) {
+        const ang = (i / 24) * Math.PI * 2;
+        const radius = 40 + ring * 30;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+          vel: { x: Math.cos(ang) * (5 + ring), y: Math.sin(ang) * (5 + ring) },
+          life: 20 + ring * 5,
+          maxLife: 40,
+          color: ring % 2 === 0 ? color : '#ffffff',
+          size: 4 - ring * 0.5
+        });
+      }
+    }
+
+    // Rising war banners effect
+    for (let i = 0; i < 15; i++) {
+      const ang = (i / 15) * Math.PI * 2;
+      const dist = 60;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: 0, y: -4 - Math.random() * 3 },
+        life: 50 + Math.random() * 30,
+        maxLife: 80,
+        color,
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    // Ground crack effect
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      for (let j = 0; j < 5; j++) {
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * (20 + j * 15), y: pos.y + Math.sin(ang) * (20 + j * 15) },
+          vel: { x: Math.cos(ang) * (1 + j * 0.5), y: Math.sin(ang) * (1 + j * 0.5) },
+          life: 25 + j * 5,
+          maxLife: 50,
+          color: '#8B4513',
+          size: 3 + Math.random() * 2
+        });
+      }
+    }
+
+    // Heavy screen shake
+    this.triggerScreenShake(12, 20);
+  }
+
+  private createCastleCaptureEffect(pos: Vec2) {
+    // Victory explosion
+    for (let layer = 0; layer < 3; layer++) {
+      for (let i = 0; i < 30; i++) {
+        const ang = (i / 30) * Math.PI * 2 + layer * 0.1;
+        const spd = 6 + layer * 3 + Math.random() * 3;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 35 + layer * 10,
+          maxLife: 55,
+          color: layer === 0 ? '#ffffff' : layer === 1 ? '#4d99ff' : '#88ccff',
+          size: 5 - layer + Math.random() * 2
+        });
+      }
+    }
+
+    // Blue banner rising
+    for (let i = 0; i < 20; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 80, y: pos.y + 20 },
+        vel: { x: (Math.random() - 0.5) * 2, y: -5 - Math.random() * 4 },
+        life: 60 + Math.random() * 30,
+        maxLife: 90,
+        color: i % 2 === 0 ? '#4d99ff' : '#ffffff',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Confetti celebration
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 100, y: pos.y - 50 + Math.random() * 50 },
+        vel: { x: Math.cos(ang) * 2, y: 1 + Math.random() * 2 },
+        life: 80 + Math.random() * 40,
+        maxLife: 120,
+        color: ['#4d99ff', '#ffd700', '#ffffff', '#88ccff'][Math.floor(Math.random() * 4)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Expanding rings
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2;
+        const radius = 30 + ring * 25;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+          vel: { x: Math.cos(ang) * (4 + ring * 2), y: Math.sin(ang) * (4 + ring * 2) },
+          life: 18 + ring * 6,
+          maxLife: 36,
+          color: '#4d99ff',
+          size: 4
+        });
+      }
+    }
+
+    // Big celebration screen shake
+    this.triggerScreenShake(10, 18);
+  }
+
   public buyItem(playerIdx: number, itemId: string, price: number) {
       if (this.money < price) return;
       const p = this.players[playerIdx], item = SHOP_ITEMS.find(i => i.id === itemId);
@@ -4188,6 +4591,7 @@ export class GameEngine {
     });
 
     this.announce('SIEGE!', enemyAttacks ? '#ff4444' : '#ffaa00', 3);
+    this.createSiegeStartEffect(castle.pos, enemyAttacks);
   }
 
   private updateSiege(castle: FactionCastle) {
@@ -4226,7 +4630,7 @@ export class GameEngine {
             castle.faction = Faction.BLUE;
             castle.hp = castle.maxHp;
             this.announce('CASTLE CAPTURED!', '#4d99ff', 3);
-            this.createExplosion(castle.pos, '#4d99ff', 50, 6, 10);
+            this.createCastleCaptureEffect(castle.pos);
             // Spawn victory allies
             for (let i = 0; i < 3; i++) {
               this.spawnAllyFromCastle(castle);
