@@ -206,7 +206,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           }
       });
 
-      // Slash effects
+      // Slash effects - enhanced with glow and multiple layers
       state.slashEffects?.forEach(s => {
           if (s.pos.x < cam.x - 150 || s.pos.x > cam.x + vw + 150 ||
               s.pos.y < cam.y - 150 || s.pos.y > cam.y + vh + 150) return;
@@ -215,14 +215,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.save();
           ctx.translate(s.pos.x, s.pos.y);
           ctx.rotate(s.angle);
+
+          // Outer glow layer
+          ctx.strokeStyle = s.color + '44';
+          ctx.lineWidth = (s.width + 8) * (1 - progress * 0.5);
+          ctx.lineCap = 'round';
+          ctx.globalAlpha = alpha * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(-s.range * 0.5 * progress, 0);
+          ctx.quadraticCurveTo(0, -18 * (1 - progress), s.range * 0.5 + s.range * progress * 0.3, 0);
+          ctx.stroke();
+
+          // Core slash
           ctx.strokeStyle = s.color;
           ctx.lineWidth = s.width * (1 - progress * 0.5);
-          ctx.lineCap = 'round';
           ctx.globalAlpha = alpha;
           ctx.beginPath();
           ctx.moveTo(-s.range * 0.5 * progress, 0);
           ctx.quadraticCurveTo(0, -15 * (1 - progress), s.range * 0.5 + s.range * progress * 0.3, 0);
           ctx.stroke();
+
+          // White highlight edge
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = alpha * 0.6;
+          ctx.beginPath();
+          ctx.moveTo(-s.range * 0.4 * progress, -2);
+          ctx.quadraticCurveTo(0, -12 * (1 - progress), s.range * 0.4 + s.range * progress * 0.2, -2);
+          ctx.stroke();
+
           ctx.globalAlpha = 1;
           ctx.restore();
       });
