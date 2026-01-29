@@ -3442,7 +3442,62 @@ export class GameEngine {
       color: config.color
     });
 
-    this.createExplosion(pos, config.color, 10, 2, 4);
+    this.createAllySpawnEffect(pos, config.color, t);
+  }
+
+  private createAllySpawnEffect(pos: Vec2, color: string, type: string) {
+    // Magic summoning circle
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const radius = 20;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 20,
+        maxLife: 20,
+        color,
+        size: 3
+      });
+    }
+    // Rising sparkles
+    for (let i = 0; i < 10; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 2, y: -3 - Math.random() * 3 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: i % 2 === 0 ? color : '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Type-specific effect
+    if (type === 'MAGE') {
+      // Magic runes
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * 30, y: pos.y + Math.sin(ang) * 30 },
+          vel: { x: 0, y: -2 },
+          life: 30,
+          maxLife: 30,
+          color: '#cc33ff',
+          size: 4
+        });
+      }
+    } else if (type === 'KNIGHT') {
+      // Golden flash
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * 5, y: Math.sin(ang) * 5 },
+          life: 15,
+          maxLife: 15,
+          color: '#ffd700',
+          size: 4
+        });
+      }
+    }
   }
 
   private updateAllies() {
