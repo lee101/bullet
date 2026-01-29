@@ -709,6 +709,13 @@ export class GameEngine {
         if (biome === 'MOUNTAIN' && p.mount !== 'DRAGON') { pos.x = oldX; pos.y = oldY; }
         if (biome === 'SEA' && p.mount !== 'DRAGON' && p.mount !== 'BOAT') { pos.x = oldX; pos.y = oldY; }
 
+        // Footstep dust particles when moving on ground
+        const moveDist = Math.abs(pos.x - oldX) + Math.abs(pos.y - oldY);
+        if (moveDist > 2 && p.z === 0 && !p.mount && this.frameCount % 8 === 0) {
+          const dustColor = biome === 'SNOW' ? '#ffffff' : biome === 'SHORE' ? '#ddcc99' : '#aa9977';
+          this.createFootstepDust(pos, dustColor);
+        }
+
         // Driver updates mount position
         if (currentMount && isDriver) {
           currentMount.pos = { ...pos };
@@ -721,9 +728,10 @@ export class GameEngine {
       // City auto-heal - full HP when entering city, 2min cooldown
       if (this.playerCityHealCooldowns[i] > 0) this.playerCityHealCooldowns[i]--;
       if (newBiome === 'TOWN' && this.playerCityHealCooldowns[i] <= 0 && p.hp < p.maxHp) {
+        const healAmount = p.maxHp - p.hp;
         p.hp = p.maxHp;
         this.playerCityHealCooldowns[i] = CITY_HEAL_COOLDOWN;
-        this.createExplosion(pos, '#00ff88', 25, 4, 6);
+        this.createHealEffect(pos, healAmount);
         this.addDamageNumber({ x: pos.x, y: pos.y - 30 }, 0, true, 'FULL HEAL');
       }
 
@@ -2362,6 +2370,34 @@ export class GameEngine {
   private shoot(pIdx: number, angle: number, element: ElementType, type: PlayerStats['weaponType']) {
     const p = this.players[pIdx], pos = {...this.playerPositions[pIdx]};
     this.bullets.push({ id: this.nextId++, playerId: pIdx, pos, vel: {x: Math.cos(angle)*20, y: Math.sin(angle)*20}, damage: p.damage, element, radius: 9, life: 100, pierce: 1 });
+    // Muzzle flash particles
+    this.createMuzzleFlash(pos, angle, ELEMENT_COLORS[element]);
+  }
+
+  private createMuzzleFlash(pos: Vec2, angle: number, color: string) {
+    const count = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+      const spread = (Math.random() - 0.5) * 0.8;
+      const ang = angle + spread;
+      const spd = 4 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(angle) * 15, y: pos.y + Math.sin(angle) * 15 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 6 + Math.random() * 4,
+        maxLife: 10,
+        color,
+        size: 2 + Math.random() * 2
+      });
+    }
+    // White core flash
+    this.particles.push({
+      pos: { x: pos.x + Math.cos(angle) * 12, y: pos.y + Math.sin(angle) * 12 },
+      vel: { x: Math.cos(angle) * 2, y: Math.sin(angle) * 2 },
+      life: 4,
+      maxLife: 4,
+      color: '#ffffff',
+      size: 4
+    });
   }
 
   private spawnEnemy(pos: Vec2) {
@@ -2480,6 +2516,83 @@ export class GameEngine {
 
   private addDamageNumber(pos: Vec2, val: number, isCrit: boolean, text?: string) {
     this.damageNumbers.push({ id: this.nextId++, pos: {...pos}, value: Math.floor(val), color: isCrit ? '#ffcc00' : '#fff', life: 45, maxLife: 45, isCrit, text });
+    // Extra particles for critical hits
+    if (isCrit && val > 0) {
+      this.createCritParticles(pos);
+    }
+  }
+
+  private createCritParticles(pos: Vec2) {
+    const count = 8;
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2;
+      const spd = 3 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ffcc00',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Starburst effect
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 8, y: Math.sin(ang) * 8 },
+        life: 10,
+        maxLife: 10,
+        color: '#ffffff',
+        size: 3
+      });
+    }
+  }
+
+  public createHealEffect(pos: Vec2, amount: number) {
+    const count = Math.min(15, 5 + Math.floor(amount / 10));
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 20;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 2, y: -2 - Math.random() * 3 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#00ff88',
+        size: 2 + Math.random() * 3
+      });
+    }
+    // Rising cross/plus effect
+    for (let i = 0; i < 4; i++) {
+      const offsets = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+      const off = offsets[i];
+      this.particles.push({
+        pos: { x: pos.x + off.x * 8, y: pos.y + off.y * 8 },
+        vel: { x: off.x * 0.5, y: -3 + off.y * 0.5 },
+        life: 20,
+        maxLife: 20,
+        color: '#88ffaa',
+        size: 4
+      });
+    }
+  }
+
+  private createFootstepDust(pos: Vec2, color: string) {
+    const count = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < count; i++) {
+      const offsetX = (Math.random() - 0.5) * 8;
+      const offsetY = Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y + PLAYER_RADIUS + offsetY },
+        vel: { x: (Math.random() - 0.5) * 1.5, y: -0.5 - Math.random() * 1 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color,
+        size: 1 + Math.random() * 1.5
+      });
+    }
   }
 
   private addLevelUpText(pos: Vec2, level: number) {
@@ -2505,8 +2618,52 @@ export class GameEngine {
       p.hp = p.maxHp;
       p.magic = p.maxMagic;
       this.addLevelUpText(this.playerPositions[pIdx], p.level);
-      this.createExplosion(this.playerPositions[pIdx], '#00ff44', 30, 5, 8);
+      this.createLevelUpCelebration(this.playerPositions[pIdx], p.color);
     }
+  }
+
+  private createLevelUpCelebration(pos: Vec2, color: string) {
+    // Radial burst
+    const burstCount = 24;
+    for (let i = 0; i < burstCount; i++) {
+      const ang = (i / burstCount) * Math.PI * 2;
+      const spd = 5 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 30 + Math.random() * 15,
+        maxLife: 45,
+        color: '#00ff44',
+        size: 3 + Math.random() * 3
+      });
+    }
+    // Rising sparkles
+    for (let i = 0; i < 20; i++) {
+      const offset = (Math.random() - 0.5) * 40;
+      this.particles.push({
+        pos: { x: pos.x + offset, y: pos.y + Math.random() * 20 },
+        vel: { x: (Math.random() - 0.5) * 2, y: -4 - Math.random() * 4 },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: i % 2 === 0 ? '#ffff88' : '#88ffaa',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Circular wave
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const radius = 25;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 },
+        life: 20,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 4
+      });
+    }
+    // Screen shake for celebration
+    this.triggerScreenShake(5, 12);
   }
 
   public allocateStat(playerIdx: number, stat: 'hp' | 'damage' | 'magic' | 'speed'): boolean {
