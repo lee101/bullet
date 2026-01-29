@@ -6,20 +6,41 @@ export class TerrainRenderer {
   private patternCache: Map<string, CanvasPattern | null> = new Map();
   private textureCache: Map<string, HTMLCanvasElement> = new Map();
   private loaded = false;
+  private loading = false;
+  private loadPromise: Promise<void> | null = null;
 
   async load(): Promise<void> {
     if (this.loaded) return;
+    if (this.loading && this.loadPromise) return this.loadPromise;
 
+    this.loading = true;
+    this.loadPromise = this._generateTextures();
+    await this.loadPromise;
+    this.loaded = true;
+    this.loading = false;
+  }
+
+  private async _generateTextures(): Promise<void> {
     // Pre-generate procedural textures for all biomes
-    const biomes: Biome[] = ['GRASS', 'FOREST', 'MOUNTAIN', 'SNOW', 'SHORE', 'RIVER', 'SEA', 'SWAMP', 'LOWLAND', 'TOWN'];
+    // Generate in two batches to allow UI updates between
+    const criticalBiomes: Biome[] = ['GRASS', 'FOREST', 'MOUNTAIN', 'SEA', 'RIVER'];
+    const secondaryBiomes: Biome[] = ['SNOW', 'SHORE', 'SWAMP', 'LOWLAND', 'TOWN'];
 
-    for (const biome of biomes) {
-      // Generate at 256px for good quality/performance balance
-      const texture = proceduralTerrain.generateBiomeTexture(biome, 256);
+    // Generate critical biomes first (smaller size for faster initial load)
+    for (const biome of criticalBiomes) {
+      const texture = proceduralTerrain.generateBiomeTexture(biome, 128);
       this.textureCache.set(biome, texture);
     }
 
-    this.loaded = true;
+    // Yield to allow other tasks
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Generate secondary biomes
+    for (const biome of secondaryBiomes) {
+      const texture = proceduralTerrain.generateBiomeTexture(biome, 128);
+      this.textureCache.set(biome, texture);
+    }
+
     console.log('TerrainRenderer: procedural textures generated');
   }
 

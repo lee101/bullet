@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
+import { LoadProgress } from '../engine/AssetManager';
 
 interface MainMenuProps {
   onStart: (playerCount: number) => void;
+  loadProgress?: LoadProgress;
 }
 
 const CONTROLS = {
@@ -24,8 +26,9 @@ const CONTROLS = {
   },
 };
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStart, loadProgress }) => {
   const [controllerCount, setControllerCount] = useState(0);
+  const isLoading = loadProgress && loadProgress.phase !== 'complete' && loadProgress.percent < 100;
 
   useEffect(() => {
     const checkControllers = () => {
@@ -66,9 +69,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
         <h1 className="text-[6rem] leading-none font-orbitron font-bold mb-6 tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white via-white/80 to-yellow-600 drop-shadow-2xl uppercase">
           Ethereal Storm
         </h1>
-        <p className="text-yellow-400/60 mb-16 text-lg tracking-[0.5em] uppercase font-bold">
+        <p className="text-yellow-400/60 mb-8 text-lg tracking-[0.5em] uppercase font-bold">
           {controllerCount > 0 ? `${controllerCount} Controller${controllerCount > 1 ? 's' : ''} Connected` : 'Keyboard Mode'}
         </p>
+
+        {isLoading && (
+          <div className="mb-12">
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-gradient-to-r from-yellow-500 to-yellow-300 transition-all duration-200"
+                style={{ width: `${loadProgress.percent}%` }}
+              />
+            </div>
+            <p className="text-white/40 text-sm uppercase tracking-widest">
+              Loading {loadProgress.phase}... {loadProgress.percent}%
+            </p>
+          </div>
+        )}
 
         <div className={`grid gap-5 mb-16 ${maxPlayers <= 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
           {playerModes.slice(0, maxPlayers).map(mode => (

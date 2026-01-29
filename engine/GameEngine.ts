@@ -886,19 +886,29 @@ export class GameEngine {
     this.particles = this.particles.filter(p => p.life > 0);
     this.damageNumbers.forEach(dn => { dn.pos.y -= 1.0; dn.life--; });
     this.damageNumbers = this.damageNumbers.filter(dn => dn.life > 0);
-    this.coins.forEach(c => { 
-        c.pos.x += c.vel.x; c.pos.y += c.vel.y; 
-        this.playerPositions.forEach((pp, i) => {
-            if (this.distSq(c.pos, pp) < 120*120) {
-                const dx = pp.x - c.pos.x, dy = pp.y - c.pos.y, d = Math.sqrt(dx*dx+dy*dy);
-                c.vel.x += (dx/d)*0.4; c.vel.y += (dy/d)*0.4;
-            }
-            if (this.distSq(c.pos, pp) < 30*30) {
-                this.money += c.value; c.life = 0;
-            }
-        });
-    });
-    this.coins = this.coins.filter(c => c.life > 0);
+    // Optimized coin physics - avoid sqrt when possible
+    const collectDistSq = 30 * 30;
+    const attractDistSq = 120 * 120;
+    for (let ci = this.coins.length - 1; ci >= 0; ci--) {
+      const c = this.coins[ci];
+      c.pos.x += c.vel.x; c.pos.y += c.vel.y;
+
+      for (let pi = 0; pi < this.playerPositions.length; pi++) {
+        const pp = this.playerPositions[pi];
+        const dx = pp.x - c.pos.x, dy = pp.y - c.pos.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < collectDistSq) {
+          this.money += c.value;
+          this.coins.splice(ci, 1);
+          break; // Coin collected, move to next
+        } else if (distSq < attractDistSq) {
+          const d = Math.sqrt(distSq);
+          c.vel.x += (dx / d) * 0.4;
+          c.vel.y += (dy / d) * 0.4;
+        }
+      }
+    }
 
     this.players.forEach((p, i) => {
       if (!p.isDead && p.hp <= 0) {
