@@ -737,7 +737,7 @@ export class GameEngine {
                     p.mount = m.type;
                     p.mountId = m.id;
                     m.riders.push(i);
-                    this.createExplosion(pos, '#fff', 15, 2, 4);
+                    this.createMountEffect(pos, m.type);
                     break;
                   }
               }
@@ -747,12 +747,13 @@ export class GameEngine {
       // Dismount with R when already mounted
       else if (this.input.isRevivePressed(i) && p.mount && p.mountId !== null) {
           const mount = this.mounts.find(m => m.id === p.mountId);
+          const dismountType = p.mount;
           if (mount) {
             mount.riders = mount.riders.filter(r => r !== i);
           }
           p.mount = null;
           p.mountId = null;
-          this.createExplosion(pos, '#fff', 10, 1, 3);
+          this.createDismountEffect(pos, dismountType);
       }
 
       // Interaction Check: Town or Trader
@@ -1002,7 +1003,9 @@ export class GameEngine {
     this.players.forEach((p, i) => {
       if (!p.isDead && p.hp <= 0) {
         p.isDead = true;
-        this.createExplosion(this.playerPositions[i], '#ff0000', 30, 5, 8);
+        // Dramatic player death VFX
+        const playerColors = ['#4d99ff', '#ff6644', '#44ff66', '#ffcc44'];
+        this.createPlayerDeathEffect(this.playerPositions[i], playerColors[i % playerColors.length]);
       }
     });
     if (this.players.every(p => p.isDead)) {
@@ -1243,7 +1246,7 @@ export class GameEngine {
               else if (reward === 'hp') { p.maxHp += 25; p.hp += 25; this.addDamageNumber(pk.pos, 25, true, '+25 MAX HP'); }
               else if (reward === 'damage') { p.damage += 8; this.addDamageNumber(pk.pos, 8, true, '+8 DMG'); }
               else { p.speed += 0.3; this.addDamageNumber(pk.pos, 0, true, '+SPEED'); }
-              this.createExplosion(pk.pos, '#ffd700', 20, 4, 6);
+              this.createChestOpenEffect(pk.pos, reward);
               break;
           }
           pk.life = 0;
@@ -1383,7 +1386,8 @@ export class GameEngine {
   private updateWalls() {
     this.walls = this.walls.filter(w => {
       if (w.hp <= 0) {
-        this.createExplosion(w.pos, '#8B4513', 20, 3, 6);
+        const cfg = WALL_CONFIGS[w.type];
+        this.createStructureDestructionEffect(w.pos, cfg.width, cfg.height, '#8B4513', false);
         return false;
       }
       return true;
@@ -1415,7 +1419,8 @@ export class GameEngine {
     });
     this.towers = this.towers.filter(t => {
       if (t.hp <= 0) {
-        this.createExplosion(t.pos, '#4a3a2f', 30, 4, 8);
+        const cfg = WALL_CONFIGS.TOWER;
+        this.createStructureDestructionEffect(t.pos, cfg.width, cfg.width, '#4a3a2f', true);
         return false;
       }
       return true;
@@ -2825,6 +2830,77 @@ export class GameEngine {
     this.triggerScreenShake(Math.min(radius * 0.15, 8), 10);
   }
 
+  private createPlayerDeathEffect(pos: Vec2, playerColor: string) {
+    // Dramatic expanding shockwave ring
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 20; i++) {
+        const ang = (i / 20) * Math.PI * 2;
+        const delay = ring * 5;
+        const spd = 4 + ring * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 25 + delay,
+          maxLife: 25 + delay,
+          color: ring === 0 ? '#ffffff' : ring === 1 ? playerColor : '#ff4444',
+          size: 4 - ring
+        });
+      }
+    }
+    // Soul fragments rising upward
+    for (let i = 0; i < 15; i++) {
+      const offsetX = (Math.random() - 0.5) * 40;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 2, y: -5 - Math.random() * 4 },
+        life: 50 + Math.random() * 30,
+        maxLife: 80,
+        color: '#aaccff',
+        size: 2 + Math.random() * 3
+      });
+    }
+    // Explosive burst of player color
+    for (let i = 0; i < 25; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 8;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: playerColor,
+        size: 3 + Math.random() * 4
+      });
+    }
+    // Ground impact sparks
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.PI * (0.8 + Math.random() * 0.4);
+      const spd = 4 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + 10 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ffaa44',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Dramatic white flash at center
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 10, y: Math.sin(ang) * 10 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 5
+      });
+    }
+    // Heavy screen shake for dramatic effect
+    this.triggerScreenShake(15, 20);
+  }
+
   private createImpactSparks(pos: Vec2, color: string, direction: Vec2) {
     const count = 5 + Math.floor(Math.random() * 4);
     const baseAngle = Math.atan2(direction.y, direction.x);
@@ -2951,6 +3027,80 @@ export class GameEngine {
     }
   }
 
+  private createChestOpenEffect(pos: Vec2, rewardType: string) {
+    // Treasure chest lid opening burst
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.PI * (0.9 + Math.random() * 0.2);
+      const spd = 3 + Math.random() * 3;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y - 10 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#8B4513',
+        size: 3 + Math.random() * 2
+      });
+    }
+    // Golden light column eruption
+    for (let i = 0; i < 25; i++) {
+      const xOff = (Math.random() - 0.5) * 30;
+      this.particles.push({
+        pos: { x: pos.x + xOff, y: pos.y },
+        vel: { x: xOff * 0.05, y: -6 - Math.random() * 5 },
+        life: 35 + Math.random() * 25,
+        maxLife: 60,
+        color: i % 3 === 0 ? '#ffffff' : '#ffd700',
+        size: 2 + Math.random() * 3
+      });
+    }
+    // Treasure sparkles radiating outward
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 2;
+      const spd = 2 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffee88',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Reward-specific colored particles
+    const rewardColors: Record<string, string> = {
+      gold: '#ffd700',
+      hp: '#ff4488',
+      damage: '#ff6644',
+      speed: '#44ddff'
+    };
+    const rewardColor = rewardColors[rewardType] || '#ffd700';
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y - 5 },
+        vel: { x: Math.cos(ang) * 3, y: -4 + Math.sin(ang) * 2 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: rewardColor,
+        size: 3 + Math.random() * 2
+      });
+    }
+    // Central white flash
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 7, y: Math.sin(ang) * 7 },
+        life: 10,
+        maxLife: 10,
+        color: '#ffffff',
+        size: 4
+      });
+    }
+    // Gentle screen shake
+    this.triggerScreenShake(4, 10);
+  }
+
   private createPowerUpEffect(pos: Vec2, color: string, type: string) {
     // Spiral ascending particles
     for (let i = 0; i < 20; i++) {
@@ -2990,6 +3140,129 @@ export class GameEngine {
       });
     }
     this.triggerScreenShake(4, 10);
+  }
+
+  private createMountEffect(pos: Vec2, mountType: MountType) {
+    const mountColors: Record<MountType, string> = {
+      HORSE: '#8B4513',
+      CHARIOT: '#cd853f',
+      DRAGON: '#ff4400',
+      BOAT: '#4488aa'
+    };
+    const color = mountColors[mountType];
+    // Swirling mounting particles
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 18 + Math.random() * 10,
+        maxLife: 28,
+        color,
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Ground dust from jump
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y + 10 },
+        vel: { x: Math.cos(ang) * 2, y: -1 - Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#aa9977',
+        size: 3 + Math.random() * 2
+      });
+    }
+    // Upward sparkles for successful mount
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 2, y: -4 - Math.random() * 3 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+    // Dragon mount gets extra fire effect
+    if (mountType === 'DRAGON') {
+      for (let i = 0; i < 12; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * 4, y: Math.sin(ang) * 4 - 2 },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: i % 2 === 0 ? '#ff6600' : '#ffcc00',
+          size: 3 + Math.random() * 3
+        });
+      }
+      this.triggerScreenShake(5, 8);
+    }
+  }
+
+  private createDismountEffect(pos: Vec2, mountType: MountType) {
+    const mountColors: Record<MountType, string> = {
+      HORSE: '#8B4513',
+      CHARIOT: '#cd853f',
+      DRAGON: '#ff4400',
+      BOAT: '#4488aa'
+    };
+    const color = mountColors[mountType];
+    // Landing dust impact
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const spd = 3 + Math.random() * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 10, y: pos.y + 8 },
+        vel: { x: Math.cos(ang) * spd, y: -0.5 + Math.sin(ang) * spd * 0.3 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#aa9977',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Colored particles dispersing
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color,
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Water splash for boat dismount
+    if (mountType === 'BOAT') {
+      for (let i = 0; i < 15; i++) {
+        const ang = Math.PI * (0.6 + Math.random() * 0.8);
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y },
+          vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 4 },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: i % 2 === 0 ? '#66aadd' : '#88ccff',
+          size: 2 + Math.random() * 2
+        });
+      }
+    }
+    // Dragon dismount fire trail
+    if (mountType === 'DRAGON') {
+      for (let i = 0; i < 8; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y - 20 + Math.random() * 40 },
+          vel: { x: (Math.random() - 0.5) * 2, y: 2 + Math.random() * 2 },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: '#ff4400',
+          size: 3 + Math.random() * 2
+        });
+      }
+    }
   }
 
   private createShieldBlockEffect(pos: Vec2, incomingVel: Vec2) {
@@ -3539,6 +3812,77 @@ export class GameEngine {
         });
       }
     }
+  }
+
+  private createStructureDestructionEffect(pos: Vec2, width: number, height: number, color: string, isTower: boolean) {
+    // Large debris particles flying outward
+    const debrisCount = isTower ? 25 : 15;
+    for (let i = 0; i < debrisCount; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 6;
+      const offsetX = (Math.random() - 0.5) * width;
+      const offsetY = (Math.random() - 0.5) * height;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y + offsetY },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: i % 3 === 0 ? '#5c4033' : color,
+        size: 3 + Math.random() * 4
+      });
+    }
+    // Dust cloud
+    const dustCount = isTower ? 20 : 12;
+    for (let i = 0; i < dustCount; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * (isTower ? 25 : 15);
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 3, y: -1 - Math.random() * 2 },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: '#8b7355',
+        size: 4 + Math.random() * 4
+      });
+    }
+    // Ground impact ring
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const radius = isTower ? 20 : 15;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 4, y: Math.sin(ang) * 4 },
+        life: 15,
+        maxLife: 15,
+        color: '#a0826d',
+        size: 3
+      });
+    }
+    // White flash at center
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 6, y: Math.sin(ang) * 6 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 4
+      });
+    }
+    // Falling debris (gravity affected look)
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * width, y: pos.y - height * 0.3 },
+        vel: { x: (Math.random() - 0.5) * 2, y: 2 + Math.random() * 3 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: color,
+        size: 2 + Math.random() * 3
+      });
+    }
+    // Screen shake - bigger for towers
+    this.triggerScreenShake(isTower ? 10 : 6, isTower ? 15 : 10);
   }
 
   private updateAllies() {
