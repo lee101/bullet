@@ -981,6 +981,7 @@ export class GameEngine {
 
     this.particles.forEach(p => { p.pos.x += p.vel.x; p.pos.y += p.vel.y; p.vel.x *= 0.97; p.vel.y *= 0.97; p.life--; });
     this.particles = this.particles.filter(p => p.life > 0);
+    this.spawnWeatherParticles();
     this.damageNumbers.forEach(dn => { dn.pos.y -= 1.0; dn.life--; });
     this.damageNumbers = this.damageNumbers.filter(dn => dn.life > 0);
     this.updateScreenShake();
@@ -1476,6 +1477,16 @@ export class GameEngine {
     p.magic -= spellData.manaCost;
     p.skillCooldowns[sIdx] = spellData.cooldown;
 
+    // Spell cast VFX
+    const spellColors: Record<string, string> = {
+      DASH: '#aaccff', NOVA: '#00ffff', HEAL: '#44ff88', LASER: '#cc33ff',
+      FIREBALL: '#ff6600', FIRE_PILLAR: '#ff4400', ICE_STORM: '#88ddff', ICE_SHARD: '#aaddff',
+      LIGHTNING_BOLT: '#ffff44', CHAIN_LIGHTNING: '#ffff00', METEOR: '#ff4400',
+      POISON_CLOUD: '#66ff66', BLOOD_DRAIN: '#ff4466', TELEPORT: '#cc66ff',
+      SHIELD: '#ffffff', EARTHQUAKE: '#8B4513', TIME_SLOW: '#aaccff', SUMMON: '#cc33ff'
+    };
+    this.createSpellCastEffect(pos, spellData.type, spellColors[spellData.type] || '#cc33ff');
+
     // Dragon mount override - fire breath
     if (p.mount === 'DRAGON') {
       const aim = this.input.getAim(pIdx) || { x: 1, y: 0 };
@@ -1503,7 +1514,10 @@ export class GameEngine {
         this.enemies.forEach(e => {
           if (this.distSq(pos, e.pos) < (spellData.radius || 380)**2) {
             e.hp -= spellData.damage;
-            e.isAggressive = true;
+            if (!e.isAggressive) {
+              e.isAggressive = true;
+              this.createAggroIndicator(e.pos);
+            }
           }
         });
         break;
@@ -1590,7 +1604,10 @@ export class GameEngine {
           if (this.distSq(pos, e.pos) < (spellData.radius || 300)**2) {
             e.hp -= spellData.damage;
             e.slowTimer = 90;
-            e.isAggressive = true;
+            if (!e.isAggressive) {
+              e.isAggressive = true;
+              this.createAggroIndicator(e.pos);
+            }
           }
         });
         break;
@@ -1924,7 +1941,10 @@ export class GameEngine {
       if (e.isAggressive && this.frameCount % 30 === 0) {
         const nearby = this.enemySpatialHash.getNearby(e.pos.x, e.pos.y, 400);
         for (const other of nearby) {
-          if (!other.isAggressive) other.isAggressive = true;
+          if (!other.isAggressive) {
+            other.isAggressive = true;
+            this.createAggroIndicator(other.pos);
+          }
         }
       }
 
@@ -2389,10 +2409,13 @@ export class GameEngine {
         for (const e of nearby) {
           if (b.life <= 0) break;
           if (this.distSq(b.pos, e.pos) < (b.radius + e.radius)**2) {
+            const wasAggressive = e.isAggressive;
             e.hp -= b.damage; e.isAggressive = true;
             this.addDamageNumber(e.pos, b.damage, false);
-            // Impact VFX
-            this.createImpactSparks(b.pos, ELEMENT_COLORS[b.element], b.vel);
+            // Elemental impact VFX
+            this.createElementalImpact(b.pos, b.element, b.vel);
+            // Aggro indicator for first hit
+            if (!wasAggressive) this.createAggroIndicator(e.pos);
             b.life = 0;
           }
         }
@@ -2915,6 +2938,323 @@ export class GameEngine {
         color,
         size: 1 + Math.random() * 2
       });
+    }
+  }
+
+  private createElementalImpact(pos: Vec2, element: ElementType, direction: Vec2) {
+    const baseAngle = Math.atan2(direction.y, direction.x);
+
+    switch (element) {
+      case ElementType.FIRE:
+        // Fire burst with ember particles rising
+        for (let i = 0; i < 10; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * 3, y: -2 - Math.random() * 4 },
+            life: 25 + Math.random() * 15,
+            maxLife: 40,
+            color: i % 3 === 0 ? '#ff6600' : (i % 3 === 1 ? '#ffcc00' : '#ff4400'),
+            size: 2 + Math.random() * 3
+          });
+        }
+        break;
+
+      case ElementType.ICE:
+        // Ice shards shattering
+        for (let i = 0; i < 8; i++) {
+          const ang = baseAngle + Math.PI + (Math.random() - 0.5) * 2;
+          const spd = 4 + Math.random() * 4;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+            life: 20 + Math.random() * 10,
+            maxLife: 30,
+            color: i % 2 === 0 ? '#88ddff' : '#ffffff',
+            size: 2 + Math.random() * 3
+          });
+        }
+        // Frost mist
+        for (let i = 0; i < 6; i++) {
+          this.particles.push({
+            pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + (Math.random() - 0.5) * 20 },
+            vel: { x: (Math.random() - 0.5) * 1, y: -0.5 - Math.random() * 1 },
+            life: 30 + Math.random() * 20,
+            maxLife: 50,
+            color: '#aaddff',
+            size: 4 + Math.random() * 3
+          });
+        }
+        break;
+
+      case ElementType.LIGHTNING:
+        // Electric sparks flying erratically
+        for (let i = 0; i < 12; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 5 + Math.random() * 5;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+            life: 8 + Math.random() * 8,
+            maxLife: 16,
+            color: i % 2 === 0 ? '#ffff44' : '#ffffff',
+            size: 1 + Math.random() * 2
+          });
+        }
+        break;
+
+      case ElementType.POISON:
+        // Toxic droplets splashing
+        for (let i = 0; i < 10; i++) {
+          const ang = baseAngle + Math.PI + (Math.random() - 0.5) * 1.5;
+          const spd = 2 + Math.random() * 3;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd + 1 },
+            life: 30 + Math.random() * 20,
+            maxLife: 50,
+            color: i % 2 === 0 ? '#44ff44' : '#88ff88',
+            size: 2 + Math.random() * 2
+          });
+        }
+        // Poison mist lingering
+        for (let i = 0; i < 5; i++) {
+          this.particles.push({
+            pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + (Math.random() - 0.5) * 15 },
+            vel: { x: (Math.random() - 0.5) * 0.5, y: -0.3 - Math.random() * 0.5 },
+            life: 40 + Math.random() * 20,
+            maxLife: 60,
+            color: '#66ff66',
+            size: 5 + Math.random() * 3
+          });
+        }
+        break;
+
+      case ElementType.MAGIC:
+        // Arcane sparkles spiraling
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2;
+          const spd = 3 + Math.random() * 2;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+            life: 20 + Math.random() * 15,
+            maxLife: 35,
+            color: i % 3 === 0 ? '#cc33ff' : (i % 3 === 1 ? '#ff66ff' : '#ffffff'),
+            size: 2 + Math.random() * 2
+          });
+        }
+        break;
+
+      default:
+        // Physical impact - simple sparks
+        for (let i = 0; i < 6; i++) {
+          const ang = baseAngle + Math.PI + (Math.random() - 0.5) * 1.2;
+          const spd = 3 + Math.random() * 3;
+          this.particles.push({
+            pos: { ...pos },
+            vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+            life: 10 + Math.random() * 8,
+            maxLife: 18,
+            color: '#ffeeaa',
+            size: 1 + Math.random() * 2
+          });
+        }
+    }
+  }
+
+  private createSpellCastEffect(pos: Vec2, spellType: string, color: string) {
+    // Magic circle forming
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const radius = 25;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 15,
+        maxLife: 15,
+        color,
+        size: 3
+      });
+    }
+
+    // Central energy gathering
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 30 + Math.random() * 20;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: -Math.cos(ang) * 4, y: -Math.sin(ang) * 4 },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+
+    // Spell-type specific effects
+    if (spellType === 'FIREBALL' || spellType === 'FIRE_PILLAR') {
+      // Fire wisps
+      for (let i = 0; i < 6; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y },
+          vel: { x: (Math.random() - 0.5) * 2, y: -3 - Math.random() * 3 },
+          life: 20 + Math.random() * 10,
+          maxLife: 30,
+          color: i % 2 === 0 ? '#ff6600' : '#ffcc00',
+          size: 3 + Math.random() * 2
+        });
+      }
+    } else if (spellType === 'FROST_NOVA' || spellType === 'ICE_SHARD') {
+      // Ice crystals forming
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 - 1 },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: '#88ddff',
+          size: 2 + Math.random() * 2
+        });
+      }
+    } else if (spellType === 'CHAIN_LIGHTNING' || spellType === 'LIGHTNING_BOLT') {
+      // Electric sparks
+      for (let i = 0; i < 10; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * 5, y: Math.sin(ang) * 5 },
+          life: 6 + Math.random() * 6,
+          maxLife: 12,
+          color: '#ffff44',
+          size: 1 + Math.random() * 2
+        });
+      }
+    } else if (spellType === 'HEAL') {
+      // Healing glow
+      for (let i = 0; i < 12; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y + (Math.random() - 0.5) * 30 },
+          vel: { x: (Math.random() - 0.5) * 1, y: -2 - Math.random() * 2 },
+          life: 25 + Math.random() * 15,
+          maxLife: 40,
+          color: '#44ff88',
+          size: 3 + Math.random() * 2
+        });
+      }
+    }
+
+    // Rising energy trail
+    for (let i = 0; i < 5; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -4 - Math.random() * 2 },
+        life: 15 + i * 3,
+        maxLife: 30,
+        color,
+        size: 2
+      });
+    }
+  }
+
+  private spawnWeatherParticles() {
+    // Only spawn weather particles periodically to avoid performance issues
+    if (this.frameCount % 3 !== 0) return;
+
+    const viewWidth = window.innerWidth;
+    const viewHeight = window.innerHeight;
+    const camX = this.camera.x;
+    const camY = this.camera.y;
+
+    // Sample biome at center of camera
+    const centerBiome = this.world.getBiomeAt(camX + viewWidth / 2, camY + viewHeight / 2);
+
+    // Weather effects based on biome
+    if (centerBiome === 'SNOW' || centerBiome === 'TUNDRA') {
+      // Snow particles
+      for (let i = 0; i < 3; i++) {
+        const x = camX + Math.random() * viewWidth;
+        const y = camY - 20;
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: (Math.random() - 0.5) * 0.8, y: 1 + Math.random() * 1.5 },
+          life: 180 + Math.random() * 60,
+          maxLife: 240,
+          color: '#ffffff',
+          size: 2 + Math.random() * 2
+        });
+      }
+    } else if (centerBiome === 'SWAMP' || centerBiome === 'JUNGLE') {
+      // Fireflies / glowing particles
+      if (Math.random() < 0.3) {
+        const x = camX + Math.random() * viewWidth;
+        const y = camY + Math.random() * viewHeight;
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.5 },
+          life: 60 + Math.random() * 60,
+          maxLife: 120,
+          color: centerBiome === 'SWAMP' ? '#88ff44' : '#ffff44',
+          size: 2 + Math.random()
+        });
+      }
+    } else if (centerBiome === 'DESERT') {
+      // Sand particles drifting
+      if (Math.random() < 0.4) {
+        const x = camX + Math.random() * viewWidth;
+        const y = camY + Math.random() * viewHeight;
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: 1 + Math.random() * 2, y: (Math.random() - 0.3) * 0.5 },
+          life: 90 + Math.random() * 60,
+          maxLife: 150,
+          color: '#d4a84b',
+          size: 1 + Math.random() * 1.5
+        });
+      }
+    } else if (centerBiome === 'VOLCANIC') {
+      // Embers rising
+      if (Math.random() < 0.4) {
+        const x = camX + Math.random() * viewWidth;
+        const y = camY + viewHeight + 20;
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: (Math.random() - 0.5) * 1, y: -2 - Math.random() * 2 },
+          life: 90 + Math.random() * 60,
+          maxLife: 150,
+          color: Math.random() < 0.5 ? '#ff6600' : '#ff4400',
+          size: 2 + Math.random() * 2
+        });
+      }
+    } else if (centerBiome === 'SEA') {
+      // Sea spray / bubbles
+      if (Math.random() < 0.2) {
+        const x = camX + Math.random() * viewWidth;
+        const y = camY + viewHeight - 50 + Math.random() * 50;
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: (Math.random() - 0.5) * 0.5, y: -0.5 - Math.random() * 1 },
+          life: 40 + Math.random() * 30,
+          maxLife: 70,
+          color: '#88ccff',
+          size: 2 + Math.random() * 2
+        });
+      }
+    } else if (centerBiome === 'FOREST' || centerBiome === 'ENCHANTED') {
+      // Floating leaves / pollen
+      if (Math.random() < 0.15) {
+        const x = camX + Math.random() * viewWidth;
+        const y = camY - 10;
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: 0.3 + Math.random() * 0.5, y: 0.5 + Math.random() * 0.8 },
+          life: 120 + Math.random() * 80,
+          maxLife: 200,
+          color: centerBiome === 'ENCHANTED' ? '#ff88ff' : (Math.random() < 0.5 ? '#66aa44' : '#cc8844'),
+          size: 2 + Math.random() * 2
+        });
+      }
     }
   }
 
