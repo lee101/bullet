@@ -2743,6 +2743,35 @@ export class GameEngine {
     });
   }
 
+  private createLandingDust(pos: Vec2, impactForce: number) {
+    const count = Math.floor(6 + impactForce * 2);
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + impactForce * 0.5 + Math.random() * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + PLAYER_RADIUS },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * 0.3 - 0.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aa9977',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Impact ring
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x, y: pos.y + PLAYER_RADIUS },
+        vel: { x: Math.cos(ang) * (2 + impactForce * 0.3), y: Math.sin(ang) * 0.5 },
+        life: 10,
+        maxLife: 10,
+        color: '#ccbbaa',
+        size: 2
+      });
+    }
+    this.triggerScreenShake(Math.min(impactForce * 0.5, 4), 6);
+  }
+
   private createExplosion(pos: Vec2, color: string, count: number, force: number, maxSize: number) {
     for (let i = 0; i < count; i++) {
         const ang = Math.random()*Math.PI*2, spd = (1+Math.random()*4.5)*force;
