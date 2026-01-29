@@ -2618,6 +2618,41 @@ export class GameEngine {
     }
   }
 
+  private createAggroIndicator(pos: Vec2) {
+    // Exclamation mark effect - rising particles
+    for (let i = 0; i < 6; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 8, y: pos.y - 20 - i * 4 },
+        vel: { x: 0, y: -3 },
+        life: 15 + i * 2,
+        maxLife: 27,
+        color: '#ff4444',
+        size: 3 - i * 0.3
+      });
+    }
+    // Dot at bottom
+    this.particles.push({
+      pos: { x: pos.x, y: pos.y - 10 },
+      vel: { x: 0, y: -1 },
+      life: 20,
+      maxLife: 20,
+      color: '#ff4444',
+      size: 4
+    });
+    // Expanding alert ring
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 4, y: Math.sin(ang) * 4 },
+        life: 12,
+        maxLife: 12,
+        color: '#ff6666',
+        size: 2
+      });
+    }
+  }
+
   private createExplosion(pos: Vec2, color: string, count: number, force: number, maxSize: number) {
     for (let i = 0; i < count; i++) {
         const ang = Math.random()*Math.PI*2, spd = (1+Math.random()*4.5)*force;
