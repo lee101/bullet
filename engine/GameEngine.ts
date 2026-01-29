@@ -690,9 +690,16 @@ export class GameEngine {
       const move = this.input.getMovement(i);
       
       if (p.z === 0 && this.input.isJumpPressed(i)) p.zVel = JUMP_FORCE;
+      const wasAirborne = p.z > 5;
       p.z += p.zVel;
       if (p.z > 0) p.zVel -= GRAVITY;
-      else { p.z = 0; p.zVel = 0; }
+      else {
+        // Landing effect when hitting ground from height
+        if (wasAirborne && p.zVel < -2) {
+          this.createLandingDust(pos, Math.abs(p.zVel));
+        }
+        p.z = 0; p.zVel = 0;
+      }
 
       // Check if player can land on a wall/tower (when falling)
       if (p.zVel < 0) {
@@ -1193,7 +1200,12 @@ export class GameEngine {
     this.pickups.forEach(pk => {
       pk.life--;
       this.playerPositions.forEach((pp, i) => {
-        if (this.distSq(pk.pos, pp) < 40 * 40) {
+        const distSq = this.distSq(pk.pos, pp);
+        // Attraction sparkle when close but not collected
+        if (distSq < 100 * 100 && distSq >= 40 * 40 && this.frameCount % 10 === 0) {
+          this.createPickupAttractionParticle(pk.pos, pp, pk.type);
+        }
+        if (distSq < 40 * 40) {
           const p = this.players[i];
           switch (pk.type) {
             case 'HEALTH_POTION':
@@ -1733,8 +1745,20 @@ export class GameEngine {
 
       // Always tick down timers
       if (e.slowTimer > 0) e.slowTimer--;
-      if (e.burnTimer > 0) { e.burnTimer--; if (inRange && e.burnTimer % 30 === 0) e.hp -= 10; }
-      if (e.poisonTimer > 0) { e.poisonTimer--; if (inRange && e.poisonTimer % 40 === 0) e.hp -= 15; }
+      if (e.burnTimer > 0) {
+        e.burnTimer--;
+        if (inRange && e.burnTimer % 30 === 0) {
+          e.hp -= 10;
+          this.createBurnTickEffect(e.pos);
+        }
+      }
+      if (e.poisonTimer > 0) {
+        e.poisonTimer--;
+        if (inRange && e.poisonTimer % 40 === 0) {
+          e.hp -= 15;
+          this.createPoisonTickEffect(e.pos);
+        }
+      }
 
       // Skip AI/movement for out-of-range enemies
       if (!inRange) return;
@@ -2651,6 +2675,70 @@ export class GameEngine {
         size: 2
       });
     }
+  }
+
+  private createBurnTickEffect(pos: Vec2) {
+    // Small fire burst
+    for (let i = 0; i < 5; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + (Math.random() - 0.5) * 15 },
+        vel: { x: Math.cos(ang) * 1.5, y: -2 - Math.random() * 2 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: i % 2 === 0 ? '#ff4400' : '#ffaa00',
+        size: 2 + Math.random() * 2
+      });
+    }
+  }
+
+  private createPoisonTickEffect(pos: Vec2) {
+    // Poison bubble particles
+    for (let i = 0; i < 4; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 10;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 1, y: -1.5 - Math.random() * 1.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: i % 2 === 0 ? '#a020f0' : '#cc66ff',
+        size: 2 + Math.random() * 2
+      });
+    }
+    // Dripping effect
+    this.particles.push({
+      pos: { x: pos.x, y: pos.y + 10 },
+      vel: { x: 0, y: 1 },
+      life: 15,
+      maxLife: 15,
+      color: '#8800aa',
+      size: 3
+    });
+  }
+
+  private createPickupAttractionParticle(pickupPos: Vec2, playerPos: Vec2, type: string) {
+    const colors: Record<string, string> = {
+      'HEALTH_POTION': '#ff4444',
+      'MANA_POTION': '#4444ff',
+      'COIN_BAG': '#ffd700',
+      'SPEED_BOOST': '#00ff88',
+      'DAMAGE_BOOST': '#ff8800',
+      'CHEST': '#ffaa44'
+    };
+    const color = colors[type] || '#ffffff';
+    // Particle moving toward player
+    const dx = playerPos.x - pickupPos.x;
+    const dy = playerPos.y - pickupPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    this.particles.push({
+      pos: { x: pickupPos.x + (Math.random() - 0.5) * 15, y: pickupPos.y + (Math.random() - 0.5) * 15 },
+      vel: { x: (dx / dist) * 3, y: (dy / dist) * 3 },
+      life: 15,
+      maxLife: 15,
+      color,
+      size: 2
+    });
   }
 
   private createExplosion(pos: Vec2, color: string, count: number, force: number, maxSize: number) {
