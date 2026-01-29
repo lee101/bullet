@@ -2041,6 +2041,7 @@ export class GameEngine {
         this.fireAreas.push({ id: this.nextId++, pos: fPos, radius: 50, life: 150, maxLife: 150, damage: 30, color: '#ff4400' });
       }
       this.createExplosion(e.pos, '#ff6600', 20, 4, 8);
+      this.createFireBreathEffect(e.pos, ang);
       e.fireBreathCooldown = 180;
     }
 
