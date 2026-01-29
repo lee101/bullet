@@ -104,6 +104,7 @@ export class GameEngine {
   public state: GameState = GameState.MENU;
 
   public camera: Vec2 = { x: 0, y: 0 };
+  private screenShake: { intensity: number; duration: number; decay: number } = { intensity: 0, duration: 0, decay: 0.9 };
   private wave: number = 1;
   private enemiesToSpawn: number = 0;
   private enemiesSpawned: number = 0;
@@ -882,10 +883,11 @@ export class GameEngine {
         this.startWave(this.wave + 1);
     }
 
-    this.particles.forEach(p => { p.pos.x += p.vel.x; p.pos.y += p.vel.y; p.life--; });
+    this.particles.forEach(p => { p.pos.x += p.vel.x; p.pos.y += p.vel.y; p.vel.x *= 0.97; p.vel.y *= 0.97; p.life--; });
     this.particles = this.particles.filter(p => p.life > 0);
     this.damageNumbers.forEach(dn => { dn.pos.y -= 1.0; dn.life--; });
     this.damageNumbers = this.damageNumbers.filter(dn => dn.life > 0);
+    this.updateScreenShake();
     this.coins.forEach(c => { 
         c.pos.x += c.vel.x; c.pos.y += c.vel.y; 
         this.playerPositions.forEach((pp, i) => {
@@ -1808,6 +1810,9 @@ export class GameEngine {
     this.enemies = this.enemies.filter(e => {
         if (e.hp <= 0) {
             this.score += 600; this.enemiesKilledThisWave++;
+            // Death explosion VFX
+            const deathColor = ENEMY_TYPES[e.type]?.color || '#ff4444';
+            this.createDeathExplosion(e.pos, deathColor, e.radius);
             this.spawnCoin(e.pos);
             const baseXp = 50 + Math.floor(e.maxHp / 5);
             this.players.forEach((p, i) => {
@@ -2261,6 +2266,8 @@ export class GameEngine {
           if (this.distSq(b.pos, e.pos) < (b.radius + e.radius)**2) {
             e.hp -= b.damage; e.isAggressive = true;
             this.addDamageNumber(e.pos, b.damage, false);
+            // Impact VFX
+            this.createImpactSparks(b.pos, ELEMENT_COLORS[b.element], b.vel);
             b.life = 0;
           }
         }
@@ -2271,6 +2278,8 @@ export class GameEngine {
           if (!this.players[i].isDead && this.distSq(b.pos, pp) < (b.radius + PLAYER_RADIUS)**2) {
             this.players[i].hp -= b.damage;
             this.addDamageNumber(pp, b.damage, false);
+            this.createImpactSparks(b.pos, '#ff4444', b.vel);
+            this.triggerScreenShake(3, 8);
             b.life = 0;
           }
         });
@@ -2403,6 +2412,69 @@ export class GameEngine {
     for (let i = 0; i < count; i++) {
         const ang = Math.random()*Math.PI*2, spd = (1+Math.random()*4.5)*force;
         this.particles.push({ pos: {...pos}, vel: {x: Math.cos(ang)*spd, y: Math.sin(ang)*spd}, life: 35, maxLife: 35, color, size: 1+Math.random()*maxSize });
+    }
+  }
+
+  public triggerScreenShake(intensity: number, duration: number = 15) {
+    if (intensity > this.screenShake.intensity) {
+      this.screenShake.intensity = intensity;
+      this.screenShake.duration = duration;
+    }
+  }
+
+  private updateScreenShake() {
+    if (this.screenShake.duration > 0) {
+      this.screenShake.duration--;
+      this.screenShake.intensity *= this.screenShake.decay;
+    } else {
+      this.screenShake.intensity = 0;
+    }
+  }
+
+  private createDeathExplosion(pos: Vec2, color: string, radius: number) {
+    const count = Math.floor(15 + radius * 0.5);
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      const spd = 2 + Math.random() * 5;
+      const size = 2 + Math.random() * 4;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius * 0.3, y: pos.y + Math.sin(ang) * radius * 0.3 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25 + Math.random() * 20,
+        maxLife: 45,
+        color,
+        size
+      });
+    }
+    // Add inner burst
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 8, y: Math.sin(ang) * 8 },
+        life: 15,
+        maxLife: 15,
+        color: '#ffffff',
+        size: 3
+      });
+    }
+    this.triggerScreenShake(Math.min(radius * 0.15, 8), 10);
+  }
+
+  private createImpactSparks(pos: Vec2, color: string, direction: Vec2) {
+    const count = 5 + Math.floor(Math.random() * 4);
+    const baseAngle = Math.atan2(direction.y, direction.x);
+    for (let i = 0; i < count; i++) {
+      const ang = baseAngle + Math.PI + (Math.random() - 0.5) * 1.2;
+      const spd = 3 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color,
+        size: 1 + Math.random() * 2
+      });
     }
   }
 
@@ -3092,7 +3164,8 @@ export class GameEngine {
       magicWheels: this.magicWheels.map(w => w.getState()),
       magicProjectiles: this.magicProjectiles,
       factionCastles: this.factionCastles,
-      allies: this.allies
+      allies: this.allies,
+      screenShake: this.screenShake.intensity
     };
   }
 

@@ -104,6 +104,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
   // Persistent pattern cache to avoid recreating patterns every frame
   const patternCacheRef = useRef<Record<string, CanvasPattern | null>>({});
   const seaPatternRef = useRef<CanvasPattern | null>(null);
+  // Player position history for trail effects
+  const playerTrailsRef = useRef<{ x: number; y: number; alpha: number }[][]>([[], [], [], []]);
 
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
@@ -353,17 +355,56 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
               e.pos.y < viewTop - e.radius || e.pos.y > viewBottom + e.radius) return;
           const enemyImg = assetManager.getEnemy(e.type);
           const size = e.radius * 2.5;
+
+          // Check if enemy was recently hit (knockback indicates hit)
+          const knockbackMag = Math.sqrt(e.knockbackVel.x * e.knockbackVel.x + e.knockbackVel.y * e.knockbackVel.y);
+          const isHit = knockbackMag > 0.5;
+
           if (e.slowTimer > 0 || e.burnTimer > 0 || e.poisonTimer > 0) ctx.globalAlpha = 0.7;
+
+          // Hit flash effect - draw white overlay when hit
+          if (isHit) {
+            ctx.globalAlpha = Math.min(1, knockbackMag * 0.2);
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius * 1.2, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+
           if (!drawImage(enemyImg, e.pos.x, e.pos.y, size, e.angle)) {
             ctx.fillStyle = ENEMY_TYPES[e.type].color;
             if (e.slowTimer > 0) ctx.fillStyle = '#4dffff';
             if (e.burnTimer > 0) ctx.fillStyle = '#ff4d4d';
             if (e.poisonTimer > 0) ctx.fillStyle = '#a020f0';
+            if (isHit) ctx.fillStyle = '#ffffff'; // Flash white when hit
             ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius, 0, Math.PI*2); ctx.fill();
           }
           ctx.globalAlpha = 1;
-          if (e.slowTimer > 0) { ctx.strokeStyle = '#4dffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 3, 0, Math.PI*2); ctx.stroke(); }
-          if (e.burnTimer > 0) { ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 5, 0, Math.PI*2); ctx.stroke(); }
+
+          // Status effect auras with glow
+          if (e.slowTimer > 0) {
+            const slowGlow = ctx.createRadialGradient(e.pos.x, e.pos.y, e.radius, e.pos.x, e.pos.y, e.radius + 8);
+            slowGlow.addColorStop(0, '#4dffff44');
+            slowGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = slowGlow;
+            ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 8, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#4dffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 3, 0, Math.PI*2); ctx.stroke();
+          }
+          if (e.burnTimer > 0) {
+            const burnGlow = ctx.createRadialGradient(e.pos.x, e.pos.y, e.radius, e.pos.x, e.pos.y, e.radius + 10);
+            burnGlow.addColorStop(0, '#ff4d4d44');
+            burnGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = burnGlow;
+            ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 10, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 5, 0, Math.PI*2); ctx.stroke();
+          }
+          if (e.poisonTimer > 0) {
+            const poisonGlow = ctx.createRadialGradient(e.pos.x, e.pos.y, e.radius, e.pos.x, e.pos.y, e.radius + 8);
+            poisonGlow.addColorStop(0, '#a020f044');
+            poisonGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = poisonGlow;
+            ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 8, 0, Math.PI*2); ctx.fill();
+          }
+
           ctx.fillStyle = '#333'; ctx.fillRect(e.pos.x - 12, e.pos.y - e.radius - 10, 24, 4);
           ctx.fillStyle = '#f00'; ctx.fillRect(e.pos.x - 11, e.pos.y - e.radius - 9, 22 * (e.hp / e.maxHp), 2);
       });
@@ -522,23 +563,100 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         const elementStr = elementToString[b.element];
         const bulletImg = assetManager.getProjectile(elementStr);
         const angle = Math.atan2(b.vel.y, b.vel.x);
+        const color = ELEMENT_COLORS[b.element];
+
+        // Draw bullet trail
+        const speed = Math.sqrt(b.vel.x * b.vel.x + b.vel.y * b.vel.y);
+        const trailLen = Math.min(speed * 3, 30);
+        const gradient = ctx.createLinearGradient(
+          b.pos.x - Math.cos(angle) * trailLen,
+          b.pos.y - Math.sin(angle) * trailLen,
+          b.pos.x, b.pos.y
+        );
+        gradient.addColorStop(0, 'transparent');
+        gradient.addColorStop(1, color);
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = b.radius * 1.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(b.pos.x - Math.cos(angle) * trailLen, b.pos.y - Math.sin(angle) * trailLen);
+        ctx.lineTo(b.pos.x, b.pos.y);
+        ctx.stroke();
+
+        // Draw glow effect
+        const glowGradient = ctx.createRadialGradient(b.pos.x, b.pos.y, 0, b.pos.x, b.pos.y, b.radius * 2.5);
+        glowGradient.addColorStop(0, color);
+        glowGradient.addColorStop(0.4, color + '88');
+        glowGradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = glowGradient;
+        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius * 2.5, 0, Math.PI*2); ctx.fill();
+
         if (!drawImage(bulletImg, b.pos.x, b.pos.y, b.radius * 3, angle)) {
-          ctx.fillStyle = ELEMENT_COLORS[b.element];
+          ctx.fillStyle = color;
           ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI*2); ctx.fill();
         }
       });
 
-      // Magic projectiles - simple render
+      // Magic projectiles - enhanced with glow and trails
       state.magicProjectiles?.forEach(mp => {
         if (mp.pos.x < viewLeft - 50 || mp.pos.x > viewRight + 50 || mp.pos.y < viewTop - 50 || mp.pos.y > viewBottom + 50) return;
-        ctx.fillStyle = MAGIC_ELEMENT_COLORS[mp.elements[0]];
+        const mpColor = MAGIC_ELEMENT_COLORS[mp.elements[0]];
+        const angle = Math.atan2(mp.vel.y, mp.vel.x);
+        const speed = Math.sqrt(mp.vel.x * mp.vel.x + mp.vel.y * mp.vel.y);
+
+        // Trail effect
+        const trailLen = Math.min(speed * 4, 50);
+        const trailGradient = ctx.createLinearGradient(
+          mp.pos.x - Math.cos(angle) * trailLen,
+          mp.pos.y - Math.sin(angle) * trailLen,
+          mp.pos.x, mp.pos.y
+        );
+        trailGradient.addColorStop(0, 'transparent');
+        trailGradient.addColorStop(1, mpColor + 'aa');
+        ctx.strokeStyle = trailGradient;
+        ctx.lineWidth = mp.radius * 1.8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(mp.pos.x - Math.cos(angle) * trailLen, mp.pos.y - Math.sin(angle) * trailLen);
+        ctx.lineTo(mp.pos.x, mp.pos.y);
+        ctx.stroke();
+
+        // Outer glow
+        const outerGlow = ctx.createRadialGradient(mp.pos.x, mp.pos.y, 0, mp.pos.x, mp.pos.y, mp.radius * 3);
+        outerGlow.addColorStop(0, mpColor);
+        outerGlow.addColorStop(0.3, mpColor + 'aa');
+        outerGlow.addColorStop(0.7, mpColor + '44');
+        outerGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = outerGlow;
+        ctx.beginPath();
+        ctx.arc(mp.pos.x, mp.pos.y, mp.radius * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core
+        ctx.fillStyle = mpColor;
         ctx.beginPath();
         ctx.arc(mp.pos.x, mp.pos.y, mp.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // White center for intensity
+        ctx.fillStyle = '#ffffff88';
+        ctx.beginPath();
+        ctx.arc(mp.pos.x, mp.pos.y, mp.radius * 0.4, 0, Math.PI * 2);
         ctx.fill();
       });
 
       state.particles.forEach(p => {
-        ctx.globalAlpha = p.life / p.maxLife;
+        const alpha = p.life / p.maxLife;
+        ctx.globalAlpha = alpha;
+        // Outer glow for larger particles
+        if (p.size > 2) {
+          const particleGlow = ctx.createRadialGradient(p.pos.x, p.pos.y, 0, p.pos.x, p.pos.y, p.size * 2);
+          particleGlow.addColorStop(0, p.color);
+          particleGlow.addColorStop(0.5, p.color + '66');
+          particleGlow.addColorStop(1, 'transparent');
+          ctx.fillStyle = particleGlow;
+          ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, p.size * 2, 0, Math.PI*2); ctx.fill();
+        }
         ctx.fillStyle = p.color;
         ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, p.size, 0, Math.PI*2); ctx.fill();
       });
@@ -563,6 +681,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       state.players.forEach((p, i) => {
         const pos = state.playerPositions[i];
         if (!pos || p.isDead) return;
+
+        // Update player trail for speed effect
+        const trail = playerTrailsRef.current[i];
+        if (trail) {
+          // Add current position to trail
+          trail.unshift({ x: pos.x, y: pos.y - p.z, alpha: 0.5 });
+          // Limit trail length and fade out
+          while (trail.length > 8) trail.pop();
+          trail.forEach((t, idx) => { t.alpha *= 0.75; });
+          // Draw trail (afterimages) - only if moving fast
+          if (trail.length > 2) {
+            const dx = trail[0].x - (trail[2]?.x || trail[0].x);
+            const dy = trail[0].y - (trail[2]?.y || trail[0].y);
+            const speed = Math.sqrt(dx * dx + dy * dy);
+            if (speed > 4) {
+              trail.forEach((t, idx) => {
+                if (idx === 0 || t.alpha < 0.05) return;
+                ctx.globalAlpha = t.alpha * 0.4;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, PLAYER_RADIUS * (1 - idx * 0.08), 0, Math.PI * 2);
+                ctx.fill();
+              });
+              ctx.globalAlpha = 1;
+            }
+          }
+        }
+
         const mountZ = p.z;
         if (p.mount) {
           const mountImg = assetManager.getMount(p.mount);
@@ -595,36 +741,93 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         }
         if (p.isBlocking) { ctx.strokeStyle = '#4df'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(pos.x, renderY, PLAYER_RADIUS + 8, 0, Math.PI*2); ctx.stroke(); }
 
-        // Render floating magic element orbs above player - simplified
+        // Render floating magic element orbs above player with charge effects
         const wheelState = state.magicWheels?.[i];
         if (wheelState?.stack?.elements?.length > 0) {
           const elements = wheelState.stack.elements;
-          const orbRadius = 10;
+          const chargeLevel = wheelState.chargeLevel || 0;
+          const orbRadius = 10 + (chargeLevel > 0 ? Math.sin(Date.now() * 0.01) * 2 : 0);
           const spacing = 24;
           const baseY = renderY - PLAYER_RADIUS - 35;
           const totalWidth = (elements.length - 1) * spacing;
           const startX = pos.x - totalWidth / 2;
 
+          // Draw charging ring around player when charging
+          if (chargeLevel > 0) {
+            const chargeRadius = PLAYER_RADIUS + 15 + chargeLevel * 0.3;
+            const chargeAlpha = 0.3 + chargeLevel * 0.005;
+            ctx.strokeStyle = MAGIC_ELEMENT_COLORS[elements[0]] + Math.floor(chargeAlpha * 255).toString(16).padStart(2, '0');
+            ctx.lineWidth = 2 + chargeLevel * 0.04;
+            ctx.beginPath();
+            ctx.arc(pos.x, renderY, chargeRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            // Inner pulse
+            const pulseRadius = PLAYER_RADIUS + 5 + Math.sin(Date.now() * 0.02) * 5 * (chargeLevel / 100);
+            ctx.strokeStyle = '#ffffff44';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(pos.x, renderY, pulseRadius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
           elements.forEach((el: MagicElement, idx: number) => {
             const orbX = startX + idx * spacing;
-            ctx.fillStyle = MAGIC_ELEMENT_COLORS[el];
+            const orbColor = MAGIC_ELEMENT_COLORS[el];
+            // Glow effect for orbs
+            const orbGlow = ctx.createRadialGradient(orbX, baseY, 0, orbX, baseY, orbRadius * 2);
+            orbGlow.addColorStop(0, orbColor);
+            orbGlow.addColorStop(0.5, orbColor + '66');
+            orbGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = orbGlow;
+            ctx.beginPath();
+            ctx.arc(orbX, baseY, orbRadius * 2, 0, Math.PI * 2);
+            ctx.fill();
+            // Orb core
+            ctx.fillStyle = orbColor;
             ctx.beginPath();
             ctx.arc(orbX, baseY, orbRadius, 0, Math.PI * 2);
+            ctx.fill();
+            // Highlight
+            ctx.fillStyle = '#ffffff66';
+            ctx.beginPath();
+            ctx.arc(orbX - orbRadius * 0.3, baseY - orbRadius * 0.3, orbRadius * 0.4, 0, Math.PI * 2);
             ctx.fill();
           });
         }
       });
 
-      // Render campfires - simplified
+      // Render campfires with flame glow effect
       state.campfires?.forEach(cf => {
         if (cf.pos.x < viewLeft - 80 || cf.pos.x > viewRight + 80 || cf.pos.y < viewTop - 80 || cf.pos.y > viewBottom + 80) return;
+        const flicker = 0.8 + Math.sin(Date.now() * 0.01 + cf.id) * 0.2;
+        // Outer glow
+        const campGlow = ctx.createRadialGradient(cf.pos.x, cf.pos.y, 0, cf.pos.x, cf.pos.y, 60 * flicker);
+        campGlow.addColorStop(0, 'rgba(255, 150, 50, 0.4)');
+        campGlow.addColorStop(0.5, 'rgba(255, 100, 0, 0.15)');
+        campGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = campGlow;
+        ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y, 60 * flicker, 0, Math.PI*2); ctx.fill();
+        // Inner flame
+        ctx.fillStyle = '#ffcc00';
+        ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y - 3 * flicker, 8 * flicker, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#ff6600';
         ctx.beginPath(); ctx.arc(cf.pos.x, cf.pos.y, 10, 0, Math.PI*2); ctx.fill();
       });
 
-      // Render torches - simplified
+      // Render torches with flame effect
       state.torches?.forEach(torch => {
         if (torch.pos.x < viewLeft - 40 || torch.pos.x > viewRight + 40 || torch.pos.y < viewTop - 40 || torch.pos.y > viewBottom + 40) return;
+        const flicker = 0.85 + Math.sin(Date.now() * 0.015 + torch.id) * 0.15;
+        // Glow
+        const torchGlow = ctx.createRadialGradient(torch.pos.x, torch.pos.y - 10, 0, torch.pos.x, torch.pos.y - 10, 35 * flicker);
+        torchGlow.addColorStop(0, 'rgba(255, 180, 50, 0.35)');
+        torchGlow.addColorStop(0.6, 'rgba(255, 100, 0, 0.1)');
+        torchGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = torchGlow;
+        ctx.beginPath(); ctx.arc(torch.pos.x, torch.pos.y - 10, 35 * flicker, 0, Math.PI*2); ctx.fill();
+        // Flame
+        ctx.fillStyle = '#ffdd44';
+        ctx.beginPath(); ctx.arc(torch.pos.x, torch.pos.y - 12 * flicker, 4 * flicker, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#ff8800';
         ctx.beginPath(); ctx.arc(torch.pos.x, torch.pos.y - 10, 5, 0, Math.PI*2); ctx.fill();
       });
@@ -701,10 +904,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       ctx.fillRect(0, 0, W, H);
 
       const viewports = calculateViewports(numPlayers, W, H);
+      // Apply screen shake offset
+      const shakeIntensity = state.screenShake || 0;
+      const shakeX = shakeIntensity > 0 ? (Math.random() - 0.5) * shakeIntensity * 2 : 0;
+      const shakeY = shakeIntensity > 0 ? (Math.random() - 0.5) * shakeIntensity * 2 : 0;
       for (const vp of viewports) {
         const pos = state.playerPositions[vp.playerIndex];
         if (!pos) continue;
-        const cam = { x: pos.x - vp.width / 2, y: pos.y - vp.height / 2 };
+        const cam = { x: pos.x - vp.width / 2 + shakeX, y: pos.y - vp.height / 2 + shakeY };
         renderViewport(vp.x, vp.y, vp.width, vp.height, cam, state, vp.playerIndex);
       }
       drawViewportDividers(ctx, numPlayers, W, H);
