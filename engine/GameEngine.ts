@@ -7088,6 +7088,203 @@ export class GameEngine {
     this.triggerScreenShake(20, 50);
   }
 
+  private createArrowTrailEffect(pos: Vec2, dir: Vec2, arrowType: string) {
+    // Type-based colors
+    const typeColors: Record<string, string[]> = {
+      normal: ['#8b7355', '#aa9977', '#ccbbaa'],
+      fire: ['#ff4400', '#ff8800', '#ffcc00'],
+      ice: ['#88ddff', '#aaeeff', '#ffffff'],
+      poison: ['#44ff00', '#88ff44', '#aaffaa'],
+      explosive: ['#ff6600', '#ffaa00', '#ffff00']
+    };
+    const colors = typeColors[arrowType] || typeColors.normal;
+
+    // Main trail particles
+    for (let i = 0; i < 4; i++) {
+      const perpX = -dir.y;
+      const perpY = dir.x;
+      const offset = (Math.random() - 0.5) * 8;
+      this.particles.push({
+        pos: { x: pos.x + perpX * offset, y: pos.y + perpY * offset },
+        vel: { x: -dir.x * 2 + (Math.random() - 0.5) * 1, y: -dir.y * 2 + (Math.random() - 0.5) * 1 },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: colors[0],
+        size: 2 + Math.random()
+      });
+    }
+
+    // Elemental trail effects
+    if (arrowType === 'fire') {
+      for (let i = 0; i < 2; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 6, y: pos.y + (Math.random() - 0.5) * 6 },
+          vel: { x: -dir.x * 1.5 + (Math.random() - 0.5) * 2, y: -dir.y * 1.5 - 1 - Math.random() },
+          life: 12 + Math.random() * 8,
+          maxLife: 20,
+          color: colors[1],
+          size: 3 + Math.random()
+        });
+      }
+    } else if (arrowType === 'ice') {
+      if (Math.random() < 0.5) {
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: colors[2],
+          size: 2 + Math.random()
+        });
+      }
+    } else if (arrowType === 'poison') {
+      for (let i = 0; i < 2; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 8, y: pos.y + (Math.random() - 0.5) * 8 },
+          vel: { x: (Math.random() - 0.5) * 1, y: -0.5 - Math.random() * 0.5 },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: 2 + Math.random() * 2
+        });
+      }
+    }
+  }
+
+  private createSpellFizzleEffect(pos: Vec2, spellColor: string) {
+    // Failed casting sparks
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: spellColor,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Smoke puff from failed spell
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + (Math.random() - 0.5) * 15 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 25 + Math.random() * 20,
+        maxLife: 45,
+        color: '#666666',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Dissipating energy particles
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + (Math.random() - 0.5) * 20 },
+        vel: { x: (Math.random() - 0.5) * 2, y: -1 - Math.random() * 2 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#aaaaaa',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Small fizzle sound effect indicator
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 },
+        life: 8 + Math.random() * 4,
+        maxLife: 12,
+        color: '#ffffff',
+        size: 2 + Math.random()
+      });
+    }
+  }
+
+  private spawnTreasurePileShimmer(pos: Vec2, radius: number) {
+    // Golden sparkles
+    if (Math.random() < 0.4) {
+      const offsetX = (Math.random() - 0.5) * radius;
+      const offsetY = (Math.random() - 0.5) * radius * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y + offsetY },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -0.8 - Math.random() * 0.6 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: Math.random() > 0.3 ? '#ffd700' : '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Occasional bright flash
+    if (Math.random() < 0.1) {
+      const offsetX = (Math.random() - 0.5) * radius;
+      const offsetY = (Math.random() - 0.5) * radius * 0.5;
+      for (let i = 0; i < 4; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 1 + Math.random();
+        this.particles.push({
+          pos: { x: pos.x + offsetX, y: pos.y + offsetY },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 8 + Math.random() * 6,
+          maxLife: 14,
+          color: '#ffffff',
+          size: 2 + Math.random()
+        });
+      }
+    }
+
+    // Coin glint
+    if (Math.random() < 0.2) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * radius, y: pos.y + (Math.random() - 0.5) * radius * 0.5 },
+        vel: { x: 0, y: -0.3 },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: '#ffee88',
+        size: 3 + Math.random()
+      });
+    }
+  }
+
+  private createFootstepDust(pos: Vec2, isRunning: boolean = false) {
+    const intensity = isRunning ? 1.5 : 1;
+    const particleCount = isRunning ? 6 : 3;
+
+    // Dust puff
+    for (let i = 0; i < particleCount; i++) {
+      const ang = Math.random() * Math.PI - Math.PI / 2; // Mostly horizontal spread
+      const spd = (0.5 + Math.random() * 1) * intensity;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + 5 },
+        vel: { x: Math.cos(ang) * spd, y: -0.5 - Math.random() * 0.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aa9977',
+        size: 2 + Math.random() * (isRunning ? 2 : 1)
+      });
+    }
+
+    // Tiny dirt particles
+    for (let i = 0; i < particleCount - 1; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 0.5 + Math.random() * 1.5;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 8, y: pos.y + 3 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: '#8b7355',
+        size: 1 + Math.random()
+      });
+    }
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
