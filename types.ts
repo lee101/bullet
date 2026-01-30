@@ -258,7 +258,7 @@ export interface Enemy {
   speed: number;
   radius: number;
   damage: number;
-  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'DRAGON_BOSS' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF' | 'DRAGON_ENEMY' | 'HARPY' | 'BOMBER' | 'SPLITTER' | 'SHIELDER' | 'HEALER' | 'CHARGER' | 'PHASER' | 'SPINNER' | 'NECRO' | 'SWARM_QUEEN' | 'MIRROR' | 'MAGE';
+  type: 'SWARM' | 'SHOOTER' | 'TANK' | 'ELITE' | 'GHOST' | 'BOSS_DRAKE' | 'DRAGON_BOSS' | 'STALKER' | 'DEER' | 'SERPENT' | 'SENTRY' | 'PATROL' | 'GUARD' | 'WOLF' | 'DRAGON_ENEMY' | 'HARPY' | 'BOMBER' | 'SPLITTER' | 'SHIELDER' | 'HEALER' | 'CHARGER' | 'PHASER' | 'SPINNER' | 'NECRO' | 'SWARM_QUEEN' | 'MIRROR' | 'MAGE' | 'BRUTE' | 'RAVAGER' | 'BERSERKER' | 'JUGGERNAUT' | 'LURKER';
   movement: 'CHASE' | 'SNIPE' | 'ORBIT' | 'WANDER' | 'BOSS_PATTERN' | 'STILL' | 'PATROL';
   faction?: Faction;
   cooldown: number;

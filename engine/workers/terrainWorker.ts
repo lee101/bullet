@@ -1,4 +1,7 @@
+/// <reference lib="webworker" />
 import { ProceduralTerrainGenerator } from '../ProceduralTerrain';
+
+declare const self: DedicatedWorkerGlobalScope;
 
 interface TerrainWorkRequest {
   id: number;
@@ -25,5 +28,5 @@ self.onmessage = (event: MessageEvent<TerrainWorkRequest>) => {
   }
   const pixels = generator.generateBiomePixels(biome, size);
   const response: TerrainWorkResponse = { id, biome, size, pixels };
-  (self as DedicatedWorkerGlobalScope).postMessage(response, [pixels.buffer]);
+  self.postMessage(response, [pixels.buffer]);
 };
