@@ -1,5 +1,6 @@
 import { Biome, Vec2 } from '../types';
 import { proceduralTerrain } from './ProceduralTerrain';
+import { assetPerf } from './perf';
 
 // Multi-layer terrain rendering with procedural generation
 export class TerrainRenderer {
@@ -8,6 +9,10 @@ export class TerrainRenderer {
   private loaded = false;
   private loading = false;
   private loadPromise: Promise<void> | null = null;
+  private worker: Worker | null = null;
+  private workerFailed = false;
+  private workerJobs: Map<number, { resolve: () => void; reject: (err: Error) => void; biome: Biome; size: number }> = new Map();
+  private workerJobId = 0;
 
   async load(): Promise<void> {
     if (this.loaded) return;
@@ -20,28 +25,116 @@ export class TerrainRenderer {
     this.loading = false;
   }
 
+  private getWorker(): Worker | null {
+    if (this.workerFailed) return null;
+    if (this.worker) return this.worker;
+    if (typeof Worker === 'undefined') return null;
+    try {
+      this.worker = new Worker(new URL('./workers/terrainWorker.ts', import.meta.url), { type: 'module' });
+      this.worker.onmessage = (event) => this.handleWorkerMessage(event as MessageEvent);
+      this.worker.onerror = (event) => {
+        const error = new Error((event as ErrorEvent).message || 'Terrain worker error');
+        this.failWorker(error);
+      };
+      return this.worker;
+    } catch {
+      this.workerFailed = true;
+      this.worker = null;
+      return null;
+    }
+  }
+
+  private failWorker(error: Error) {
+    this.workerFailed = true;
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    const pending = Array.from(this.workerJobs.values());
+    this.workerJobs.clear();
+    pending.forEach(job => job.reject(error));
+  }
+
+  private handleWorkerMessage(event: MessageEvent) {
+    const { id, biome, size, pixels } = event.data as { id: number; biome: Biome; size: number; pixels: Uint8ClampedArray | ArrayBuffer };
+    const job = this.workerJobs.get(id);
+    if (!job) return;
+    this.workerJobs.delete(id);
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Unable to create terrain canvas context');
+      const pixelArray = pixels instanceof Uint8ClampedArray ? pixels : new Uint8ClampedArray(pixels);
+      const imageData = new ImageData(pixelArray, size, size);
+      ctx.putImageData(imageData, 0, 0);
+      this.textureCache.set(biome, canvas);
+      job.resolve();
+    } catch (err) {
+      job.reject(err instanceof Error ? err : new Error('Failed to apply terrain pixels'));
+    }
+  }
+
+  private async generateBiomeMainThread(biome: Biome, size: number): Promise<void> {
+    const texture = proceduralTerrain.generateBiomeTexture(biome, size);
+    this.textureCache.set(biome, texture);
+  }
+
+  private async generateBiomeInWorker(biome: Biome, size: number): Promise<void> {
+    const worker = this.getWorker();
+    if (!worker) throw new Error('Terrain worker unavailable');
+    const id = ++this.workerJobId;
+    return new Promise((resolve, reject) => {
+      this.workerJobs.set(id, { resolve, reject, biome, size });
+      worker.postMessage({ id, biome, size });
+    });
+  }
+
+  private async generateBiome(biome: Biome, size: number): Promise<void> {
+    const worker = this.getWorker();
+    if (!worker) {
+      await this.generateBiomeMainThread(biome, size);
+      return;
+    }
+    try {
+      await this.generateBiomeInWorker(biome, size);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Terrain worker failed');
+      this.failWorker(error);
+      await this.generateBiomeMainThread(biome, size);
+    }
+  }
+
+  private async yieldToMain(): Promise<void> {
+    await new Promise(resolve => {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => resolve(undefined));
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
+  }
+
   private async _generateTextures(): Promise<void> {
+    const start = assetPerf.start('terrain:generate');
     // Pre-generate procedural textures for all biomes
     // Generate in two batches to allow UI updates between
     const criticalBiomes: Biome[] = ['GRASS', 'FOREST', 'MOUNTAIN', 'SEA', 'RIVER'];
     const secondaryBiomes: Biome[] = ['SNOW', 'SHORE', 'SWAMP', 'LOWLAND', 'TOWN'];
 
     // Generate critical biomes first (smaller size for faster initial load)
-    for (const biome of criticalBiomes) {
-      const texture = proceduralTerrain.generateBiomeTexture(biome, 128);
-      this.textureCache.set(biome, texture);
-    }
+    await Promise.all(criticalBiomes.map(biome => this.generateBiome(biome, 128)));
 
     // Yield to allow other tasks
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await this.yieldToMain();
 
     // Generate secondary biomes
-    for (const biome of secondaryBiomes) {
-      const texture = proceduralTerrain.generateBiomeTexture(biome, 128);
-      this.textureCache.set(biome, texture);
-    }
+    await Promise.all(secondaryBiomes.map(biome => this.generateBiome(biome, 128)));
 
     console.log('TerrainRenderer: procedural textures generated');
+    assetPerf.end('terrain:generate', start, { force: true });
   }
 
   private getPattern(ctx: CanvasRenderingContext2D, biome: string): CanvasPattern | null {

@@ -142,6 +142,15 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
 
   const currentItem = hoveredItem || filteredItems[selectedItem];
   const shopkeeperLevel = Math.min(town.level, 4);
+  const previewPlayer = players[selectedPlayer];
+  const previewMods = currentItem?.mods || {};
+  const statPreview = previewPlayer ? {
+    dmg: previewPlayer.damage + (previewMods.dmg || 0),
+    hp: previewPlayer.maxHp + (previewMods.hp || 0),
+    spd: previewPlayer.speed + (previewMods.spd || 0),
+    mag: previewPlayer.maxMagic + (previewMods.mag || 0),
+    proj: previewPlayer.projectileCount + (previewMods.proj || 0),
+  } : null;
 
   return (
     <div className="fixed inset-0 z-[60] bg-[#0a0a0c]/95 backdrop-blur-2xl flex flex-col p-4 font-rajdhani">
@@ -206,6 +215,34 @@ export const ShopUI: React.FC<ShopUIProps> = ({ players, money, town, onBuy, onE
                 <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 text-[9px] rounded">{currentItem.spellData.manaCost} MP</span>
                 {currentItem.spellData.damage > 0 && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[9px] rounded">{currentItem.spellData.damage} DMG</span>}
                 <span className="px-1.5 py-0.5 bg-gray-500/20 text-gray-400 text-[9px] rounded">{(currentItem.spellData.cooldown / 60).toFixed(1)}s CD</span>
+                {currentItem.spellData.range > 0 && <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] rounded">{currentItem.spellData.range} RNG</span>}
+                {currentItem.spellData.radius && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-400 text-[9px] rounded">{currentItem.spellData.radius} RAD</span>}
+                {currentItem.spellData.duration && <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[9px] rounded">{(currentItem.spellData.duration / 60).toFixed(1)}s DUR</span>}
+                {currentItem.spellData.projectileCount && <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[9px] rounded">x{currentItem.spellData.projectileCount}</span>}
+              </div>
+            )}
+            {statPreview && currentItem.mods && Object.keys(currentItem.mods).length > 0 && (
+              <div className="mt-2 border-t border-white/10 pt-2 text-[9px] text-white/60">
+                <div className="flex items-center justify-between">
+                  <span>DMG</span>
+                  <span>{previewPlayer.damage} → {statPreview.dmg}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>HP</span>
+                  <span>{previewPlayer.maxHp} → {statPreview.hp}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>SPD</span>
+                  <span>{previewPlayer.speed.toFixed(1)} → {statPreview.spd.toFixed(1)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>MP</span>
+                  <span>{previewPlayer.maxMagic} → {statPreview.mag}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>PROJ</span>
+                  <span>{previewPlayer.projectileCount} → {statPreview.proj}</span>
+                </div>
               </div>
             )}
           </div>

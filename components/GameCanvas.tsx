@@ -9,6 +9,7 @@ import { FEATURE_COLORS, blendBiomeColors, TerrainFeature } from '../engine/Terr
 import { ELEMENT_COLORS as MAGIC_ELEMENT_COLORS } from '../engine/MagicWheel';
 import { terrainRenderer } from '../engine/TerrainRenderer';
 import { calculateViewports, drawViewportDividers } from '../engine/ViewportManager';
+import { renderPerf } from '../engine/perf';
 
 interface GameCanvasProps { engine: GameEngine; }
 
@@ -55,10 +56,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
   const [canvasSize, setCanvasSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 
   useEffect(() => {
-    Promise.all([
-      assetManager.load(),
-      terrainRenderer.load()
-    ]).then(() => setAssetsLoaded(true));
+    assetManager.loadCore().then(() => setAssetsLoaded(true));
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => terrainRenderer.load(), { timeout: 1000 });
+    } else {
+      setTimeout(() => terrainRenderer.load(), 0);
+    }
   }, []);
 
   useEffect(() => {
@@ -448,7 +451,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         if (ally.pos.x < viewLeft - 20 || ally.pos.x > viewRight + 20 ||
             ally.pos.y < viewTop - 20 || ally.pos.y > viewBottom + 20) return;
 
-        const size = ally.type === 'KNIGHT' ? 18 : ally.type === 'MAGE' ? 14 : 15;
+        const size = ally.type === 'KNIGHT' ? 18 : ally.type === 'MAGE' ? 14 : ally.type === 'SKELETON' ? 16 : 15;
 
         // Body
         ctx.fillStyle = ally.color;
@@ -479,6 +482,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.beginPath();
           ctx.arc(ally.pos.x, ally.pos.y, size + 2, 0, Math.PI * 2);
           ctx.stroke();
+        } else if (ally.type === 'SKELETON') {
+          ctx.strokeStyle = '#888';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(ally.pos.x, ally.pos.y, size + 2, 0, Math.PI * 2);
+          ctx.stroke();
         }
 
         // HP bar
@@ -487,6 +496,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
           ctx.fillStyle = '#333'; ctx.fillRect(ally.pos.x - 10, ally.pos.y - size - 8, 20, 3);
           ctx.fillStyle = '#4dc3ff';
           ctx.fillRect(ally.pos.x - 9, ally.pos.y - size - 7, 18 * hpPct, 2);
+        }
+
+        // Ally speech bubble
+        if (ally.speech && ally.speechTimer && ally.speechTimer > 0) {
+          const text = ally.speech;
+          ctx.font = '10px Orbitron';
+          ctx.textAlign = 'center';
+          const metrics = ctx.measureText(text);
+          const padX = 6;
+          const padY = 4;
+          const bubbleW = metrics.width + padX * 2;
+          const bubbleH = 14 + padY;
+          const bubbleX = ally.pos.x - bubbleW / 2;
+          const bubbleY = ally.pos.y - size - 26;
+          ctx.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx.strokeStyle = ally.color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 6);
+          else ctx.rect(bubbleX, bubbleY, bubbleW, bubbleH);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.fillText(text, ally.pos.x, bubbleY + 11);
         }
       });
 
@@ -603,6 +636,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         }
         if (p.isBlocking) { ctx.strokeStyle = '#4df'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(pos.x, renderY, PLAYER_RADIUS + 8, 0, Math.PI*2); ctx.stroke(); }
 
+        // Facing direction arrow (twin-stick aim)
+        const facingAngle = typeof p.lastAimAngle === 'number' ? p.lastAimAngle : 0;
+        const arrowLen = 8;
+        const arrowDist = PLAYER_RADIUS + 10;
+        const arrowX = pos.x + Math.cos(facingAngle) * arrowDist;
+        const arrowY = renderY + Math.sin(facingAngle) * arrowDist;
+        ctx.save();
+        ctx.translate(arrowX, arrowY);
+        ctx.rotate(facingAngle);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(arrowLen, 0);
+        ctx.lineTo(-arrowLen / 2, -arrowLen / 2);
+        ctx.lineTo(-arrowLen / 3, 0);
+        ctx.lineTo(-arrowLen / 2, arrowLen / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
         // Render floating magic element orbs above player - simplified
         const wheelState = state.magicWheels?.[i];
         if (wheelState?.stack?.elements?.length > 0) {
@@ -678,6 +732,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
       const now = performance.now();
       const dt = (now - prevTime) / 1000;
       prevTime = now;
+      renderPerf.startFrame();
+      const frameStart = now;
 
       if (now - lastTime >= 1000) {
         fps = frameCount; frameCount = 0; lastTime = now;
@@ -686,8 +742,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         if (window.__GAME_FPS_SAMPLES__.length > 60) window.__GAME_FPS_SAMPLES__.shift();
       }
 
-      engine.update();
-      const state = engine.getDrawState();
+      renderPerf.measure('engine.update', () => engine.update());
+      const state = renderPerf.measure('drawState', () => engine.getDrawState());
+      const renderStart = renderPerf.start('renderFrame');
 
       if (shaderRef.current) {
         state.fireAreas.forEach(fa => {
@@ -927,6 +984,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
         }
       }
 
+      renderPerf.end('renderFrame', renderStart);
+      renderPerf.record('frame', performance.now() - frameStart, { force: true, thresholdMs: 20 });
       animationId = requestAnimationFrame(render);
     };
     render(); return () => cancelAnimationFrame(animationId);

@@ -163,12 +163,21 @@ export class ProceduralTerrainGenerator {
       return this.textureCache.get(cacheKey)!;
     }
 
+    const pixels = this.generateBiomePixels(biome, size);
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d')!;
-    const imageData = ctx.createImageData(size, size);
-    const data = imageData.data;
+    const imageData = new ImageData(pixels, size, size);
+    ctx.putImageData(imageData, 0, 0);
+
+    this.textureCache.set(cacheKey, canvas);
+    return canvas;
+  }
+
+  // Generate raw pixel data for a biome texture (worker-safe)
+  generateBiomePixels(biome: string, size: number = 256): Uint8ClampedArray {
+    const data = new Uint8ClampedArray(size * size * 4);
 
     const palette = BIOME_PALETTES[biome] || BIOME_PALETTES.GRASS;
     const primary = hexToRgb(palette.primary);
@@ -186,8 +195,7 @@ export class ProceduralTerrainGenerator {
         const tx = x / size * scale;
         const ty = y / size * scale;
 
-        // Generate tileable noise by sampling 4D noise on a torus
-        // Simplified: use modular coordinates
+        // Simplified tileable noise
         const nx = tx;
         const ny = ty;
 
@@ -233,13 +241,9 @@ export class ProceduralTerrainGenerator {
       }
     }
 
-    ctx.putImageData(imageData, 0, 0);
-
     // Make truly tileable by blending edges
-    this.blendEdgesForTiling(ctx, size);
-
-    this.textureCache.set(cacheKey, canvas);
-    return canvas;
+    this.blendEdgesForTilingData(data, size);
+    return data;
   }
 
   private generateGrass(x: number, y: number, p: any, s: any, a: any, d: any): { r: number; g: number; b: number } {
@@ -451,10 +455,8 @@ export class ProceduralTerrainGenerator {
   }
 
   // Blend edges to ensure perfect tiling
-  private blendEdgesForTiling(ctx: CanvasRenderingContext2D, size: number): void {
+  private blendEdgesForTilingData(data: Uint8ClampedArray, size: number): void {
     const blendWidth = Math.floor(size * 0.1); // 10% edge blend
-    const imageData = ctx.getImageData(0, 0, size, size);
-    const data = imageData.data;
 
     // Horizontal edge blend
     for (let y = 0; y < size; y++) {
@@ -485,8 +487,6 @@ export class ProceduralTerrainGenerator {
         }
       }
     }
-
-    ctx.putImageData(imageData, 0, 0);
   }
 
   // Clear cache if needed

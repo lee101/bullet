@@ -3,9 +3,10 @@
  * Critical assets load first for faster game start
  */
 
-const ASSET_PATH = '/assets/game';
-const GENERATED_PATH = '/assets/generated';
-const TILED_PATH = '/assets/tiled';
+import { assetPerf } from './perf';
+
+const ASSET_ROOT = '/assets';
+const LOW_ASSET_ROOT = '/assets-low';
 
 export type AssetCategory = 'enemies' | 'mounts' | 'players' | 'npcs' | 'projectiles' | 'items' | 'effects' | 'terrain' | 'decor' | 'characters';
 
@@ -86,11 +87,18 @@ class AssetManager {
   };
   private loaded = false;
   private criticalLoaded = false;
+  private coreLoaded = false;
+  private uiLoaded = false;
   private loading = false;
   private loadPromise: Promise<void> | null = null;
+  private corePromise: Promise<void> | null = null;
+  private uiPromise: Promise<void> | null = null;
   private progressCallback: ((progress: LoadProgress) => void) | null = null;
   private loadedCount = 0;
   private totalCount = 0;
+  private assetQuality: 'auto' | 'full' | 'low' = 'auto';
+  private resolvedAssetRoot: string | null = null;
+  private resolvedFallbackRoot: string | null = null;
 
   setProgressCallback(callback: (progress: LoadProgress) => void) {
     this.progressCallback = callback;
@@ -104,7 +112,13 @@ class AssetManager {
       });
     } else if (this.loadedCount > 0) {
       // Loading in progress - report current state
-      const phase = this.criticalLoaded ? 'gameplay' : 'critical';
+      const phase: LoadProgress['phase'] = this.uiLoaded
+        ? 'complete'
+        : this.coreLoaded
+          ? 'ui'
+          : this.criticalLoaded
+            ? 'gameplay'
+            : 'critical';
       callback({
         loaded: this.loadedCount,
         total: this.totalCount,
@@ -114,9 +128,30 @@ class AssetManager {
     }
   }
 
+  setQuality(quality: 'auto' | 'full' | 'low') {
+    if (this.loading || this.loaded || this.corePromise || this.loadPromise) {
+      console.warn('[AssetManager] Ignoring quality change after load has started.');
+      return;
+    }
+    this.assetQuality = quality;
+    this.resolvedAssetRoot = null;
+    this.resolvedFallbackRoot = null;
+  }
+
   async load(): Promise<void> {
     if (this.loaded) return;
     if (this.loading && this.loadPromise) return this.loadPromise;
+    if (this.corePromise) {
+      this.loading = true;
+      this.loadPromise = (async () => {
+        await this.corePromise;
+        await this.ensureUiLoaded();
+        this.loaded = true;
+      })();
+      await this.loadPromise;
+      this.loading = false;
+      return;
+    }
 
     this.loading = true;
     this.loadPromise = this._loadProgressive();
@@ -125,27 +160,73 @@ class AssetManager {
     this.loading = false;
   }
 
+  async loadCore(): Promise<void> {
+    if (this.coreLoaded) return;
+    if (this.corePromise) return this.corePromise;
+
+    const coreStart = assetPerf.start('assets:core');
+    this.corePromise = (async () => {
+      this.ensureTotals();
+
+      if (!this.criticalLoaded) {
+        await this._loadPhase(CRITICAL_ASSETS, 'critical');
+        await this._loadMagicAssets();
+        this.criticalLoaded = true;
+      }
+
+      await this._loadPhase(GAMEPLAY_ASSETS, 'gameplay');
+      this.coreLoaded = true;
+      this._reportProgress('ui');
+      assetPerf.end('assets:core', coreStart, { force: true });
+
+      // Start UI assets in background after core is ready
+      this.startUiLoadDeferred();
+    })();
+
+    await this.corePromise;
+  }
+
   private async _loadProgressive(): Promise<void> {
-    // Calculate total count for progress tracking
+    await this.loadCore();
+    await this.ensureUiLoaded();
+    this._reportProgress('complete');
+    console.log('All assets loaded');
+  }
+
+  private ensureTotals() {
+    if (this.totalCount > 0) return;
     this.totalCount = this._countAssets(CRITICAL_ASSETS) +
                       this._countAssets(GAMEPLAY_ASSETS) +
                       this._countUIAssets() + 16; // 16 magic assets
+  }
 
-    // Phase 1: Critical assets (players, basic enemies, terrain)
-    if (!this.criticalLoaded) {
-      await this._loadPhase(CRITICAL_ASSETS, 'critical');
-      await this._loadMagicAssets();
-      this.criticalLoaded = true;
+  private startUiLoadDeferred() {
+    if (this.uiLoaded || this.uiPromise) return;
+    const start = () => {
+      if (this.uiPromise) return;
+      this.uiPromise = this._loadUIAssets().then(() => {
+        this.uiLoaded = true;
+        this.loaded = this.coreLoaded;
+        this._reportProgress('complete');
+      });
+    };
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      requestIdleCallback(start, { timeout: 1000 });
+    } else {
+      setTimeout(start, 0);
     }
+  }
 
-    // Phase 2: Gameplay assets (rest of enemies, mounts, effects)
-    await this._loadPhase(GAMEPLAY_ASSETS, 'gameplay');
-
-    // Phase 3: UI assets (characters, decor, cities) - loaded in background
-    await this._loadUIAssets();
-
-    this._reportProgress('complete');
-    console.log('All assets loaded');
+  private async ensureUiLoaded(): Promise<void> {
+    if (this.uiLoaded) return;
+    if (!this.uiPromise) {
+      this.uiPromise = this._loadUIAssets().then(() => {
+        this.uiLoaded = true;
+        this.loaded = this.coreLoaded;
+        this._reportProgress('complete');
+      });
+    }
+    await this.uiPromise;
   }
 
   private _countAssets(manifest: Record<string, string[]>): number {
@@ -169,9 +250,55 @@ class AssetManager {
     }
   }
 
+  private shouldUseLowRes(): boolean {
+    if (this.assetQuality === 'low') return true;
+    if (this.assetQuality === 'full') return false;
+    if (typeof navigator === 'undefined') return false;
+    const conn = (navigator as { connection?: { saveData?: boolean } }).connection;
+    const saveData = !!conn?.saveData;
+    const memory = (navigator as { deviceMemory?: number }).deviceMemory || 0;
+    const reducedData = typeof window !== 'undefined' &&
+      'matchMedia' in window &&
+      window.matchMedia('(prefers-reduced-data: reduce)').matches;
+    return saveData || reducedData || (memory > 0 && memory <= 4);
+  }
+
+  private resolveAssetRoots(): { root: string; fallback: string | null } {
+    if (this.resolvedAssetRoot) {
+      return { root: this.resolvedAssetRoot, fallback: this.resolvedFallbackRoot };
+    }
+    const useLow = this.shouldUseLowRes();
+    this.resolvedAssetRoot = useLow ? LOW_ASSET_ROOT : ASSET_ROOT;
+    this.resolvedFallbackRoot = useLow ? ASSET_ROOT : null;
+    return { root: this.resolvedAssetRoot, fallback: this.resolvedFallbackRoot };
+  }
+
+  private getAssetPaths() {
+    const { root, fallback } = this.resolveAssetRoots();
+    return {
+      game: `${root}/game`,
+      generated: `${root}/generated`,
+      tiled: `${root}/tiled`,
+      magic: `${root}/magic`,
+      fallbackGame: fallback ? `${fallback}/game` : null,
+      fallbackGenerated: fallback ? `${fallback}/generated` : null,
+      fallbackTiled: fallback ? `${fallback}/tiled` : null,
+      fallbackMagic: fallback ? `${fallback}/magic` : null,
+    };
+  }
+
+  private async loadWithFallback(src: string, fallback?: string | null): Promise<HTMLImageElement> {
+    let img = await this._loadImage(src);
+    if (img.width === 0 && fallback && fallback !== src) {
+      img = await this._loadImage(fallback);
+    }
+    return img;
+  }
+
   private _loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve) => {
       const img = new Image();
+      img.decoding = 'async';
       img.onload = () => {
         this.loadedCount++;
         resolve(img);
@@ -186,34 +313,43 @@ class AssetManager {
   }
 
   private async _loadPhase(manifest: Record<string, string[]>, phase: LoadProgress['phase']): Promise<void> {
+    const phaseStart = assetPerf.start(`assets:${phase}`);
     const batchSize = 10; // Load 10 assets at a time for better parallelism
-    const tasks: { category: string; name: string; src: string }[] = [];
+    const tasks: { category: string; name: string; src: string; fallbackSrc?: string | null }[] = [];
+    const paths = this.getAssetPaths();
 
     for (const [category, names] of Object.entries(manifest)) {
       for (const name of names) {
         let src: string;
+        let fallbackSrc: string | null = null;
         if (category === 'terrain') {
-          src = `${TILED_PATH}/terrain_${name}.webp`;
+          src = `${paths.tiled}/terrain_${name}.webp`;
+          fallbackSrc = paths.fallbackTiled ? `${paths.fallbackTiled}/terrain_${name}.webp` : null;
         } else if (category === 'decor') {
-          src = `${GENERATED_PATH}/decor_${name}.webp`;
+          src = `${paths.generated}/decor_${name}.webp`;
+          fallbackSrc = paths.fallbackGenerated ? `${paths.fallbackGenerated}/decor_${name}.webp` : null;
         } else if (category === 'cities') {
-          src = `${GENERATED_PATH}/city_${name}.webp`;
+          src = `${paths.generated}/city_${name}.webp`;
+          fallbackSrc = paths.fallbackGenerated ? `${paths.fallbackGenerated}/city_${name}.webp` : null;
         } else {
-          src = `${ASSET_PATH}/${category}/${name}.webp`;
+          src = `${paths.game}/${category}/${name}.webp`;
+          fallbackSrc = paths.fallbackGame ? `${paths.fallbackGame}/${category}/${name}.webp` : null;
         }
-        tasks.push({ category, name, src });
+        tasks.push({ category, name, src, fallbackSrc });
       }
     }
 
     // Process in batches
     for (let i = 0; i < tasks.length; i += batchSize) {
       const batch = tasks.slice(i, i + batchSize);
-      await Promise.all(batch.map(async ({ category, name, src }) => {
-        let img = await this._loadImage(src);
+      await Promise.all(batch.map(async ({ category, name, src, fallbackSrc }) => {
+        let img = await this.loadWithFallback(src, fallbackSrc);
 
         // Fallback for terrain
         if (img.width === 0 && category === 'terrain') {
-          img = await this._loadImage(`${GENERATED_PATH}/terrain_${name}.webp`);
+          const altSrc = `${paths.generated}/terrain_${name}.webp`;
+          const altFallback = paths.fallbackGenerated ? `${paths.fallbackGenerated}/terrain_${name}.webp` : null;
+          img = await this.loadWithFallback(altSrc, altFallback);
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -221,44 +357,63 @@ class AssetManager {
       }));
       this._reportProgress(phase);
     }
+    assetPerf.end(`assets:${phase}`, phaseStart, { force: true });
   }
 
   private async _loadMagicAssets(): Promise<void> {
-    const MAGIC_PATH = '/assets/magic';
+    const magicStart = assetPerf.start('assets:magic');
     const magicElements = ['fire', 'ice', 'lightning', 'earth', 'black', 'cure', 'blood', 'lumin'];
+    const paths = this.getAssetPaths();
+    const magicPath = paths.magic;
+    const fallbackMagic = paths.fallbackMagic;
 
     await Promise.all(magicElements.flatMap(el => [
-      this._loadImage(`${MAGIC_PATH}/orb_${el}.webp`).then(img => {
+      this.loadWithFallback(`${magicPath}/orb_${el}.webp`, fallbackMagic ? `${fallbackMagic}/orb_${el}.webp` : null).then(img => {
         this.assets.magic[`orb_${el}`] = img;
       }),
-      this._loadImage(`${MAGIC_PATH}/proj_${el}.webp`).then(img => {
+      this.loadWithFallback(`${magicPath}/proj_${el}.webp`, fallbackMagic ? `${fallbackMagic}/proj_${el}.webp` : null).then(img => {
         this.assets.magic[`proj_${el}`] = img;
       })
     ]));
     this._reportProgress('critical');
+    assetPerf.end('assets:magic', magicStart, { force: true });
   }
 
   private async _loadUIAssets(): Promise<void> {
+    const uiStart = assetPerf.start('assets:ui');
     // Load decor and cities
     await this._loadPhase({ decor: UI_ASSETS.decor, cities: UI_ASSETS.cities }, 'ui');
+    const paths = this.getAssetPaths();
+    const basePath = paths.generated;
+    const fallbackPath = paths.fallbackGenerated;
 
     // Load character assets in batches
     const batchSize = 15;
     for (let i = 0; i < UI_ASSETS.characters.length; i += batchSize) {
       const batch = UI_ASSETS.characters.slice(i, i + batchSize);
       await Promise.all(batch.flatMap(charId => [
-        this._loadImage(`${GENERATED_PATH}/char_${charId}_portrait.webp`).then(img => {
+        this.loadWithFallback(
+          `${basePath}/char_${charId}_portrait.webp`,
+          fallbackPath ? `${fallbackPath}/char_${charId}_portrait.webp` : null
+        ).then(img => {
           this.assets.characters.portraits[charId] = img;
         }),
-        this._loadImage(`${GENERATED_PATH}/char_${charId}_sprite.webp`).then(img => {
+        this.loadWithFallback(
+          `${basePath}/char_${charId}_sprite.webp`,
+          fallbackPath ? `${fallbackPath}/char_${charId}_sprite.webp` : null
+        ).then(img => {
           this.assets.characters.sprites[charId] = img;
         }),
-        this._loadImage(`${GENERATED_PATH}/char_${charId}_icon.webp`).then(img => {
+        this.loadWithFallback(
+          `${basePath}/char_${charId}_icon.webp`,
+          fallbackPath ? `${fallbackPath}/char_${charId}_icon.webp` : null
+        ).then(img => {
           this.assets.characters.icons[charId] = img;
         })
       ]));
       this._reportProgress('ui');
     }
+    assetPerf.end('assets:ui', uiStart, { force: true });
   }
 
   getMagicOrb(element: string): HTMLImageElement | null {

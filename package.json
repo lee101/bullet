@@ -10,6 +10,7 @@
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:perf": "node scripts/perf-test.js",
+    "gen:lowres": "node scripts/generate-lowres-assets.js",
     "gen:textures": "FAL_API_KEY=$FAL_API_KEY npx tsx scripts/generate-textures.ts",
     "tile:textures": "npx tsx scripts/make-tileable.ts",
     "gen:terrain": "FAL_API_KEY=$FAL_API_KEY npx tsx scripts/advanced-tile-gen.ts"

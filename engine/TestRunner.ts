@@ -1,6 +1,6 @@
 import { GameEngine } from './GameEngine';
 import { InputManager } from './InputManager';
-import { GameState } from '../types';
+import { GameState, InputType } from '../types';
 
 interface TestResult {
   name: string;
@@ -811,7 +811,7 @@ export class TestRunner {
       this.engine.start(1);
       for (let i = 0; i < 100; i++) this.engine.update();
       const state = this.engine.getDrawState();
-      const validTypes = ['SOLDIER', 'ARCHER', 'MAGE', 'KNIGHT'];
+      const validTypes = ['SOLDIER', 'ARCHER', 'MAGE', 'KNIGHT', 'SKELETON'];
       state.allies?.forEach((a, i) => {
         if (!validTypes.includes(a.type)) throw new Error(`Ally ${i} has invalid type: ${a.type}`);
       });
@@ -822,7 +822,7 @@ export class TestRunner {
       this.engine.start(1);
       for (let i = 0; i < 100; i++) this.engine.update();
       const state = this.engine.getDrawState();
-      const validBehaviors = ['FOLLOW', 'GUARD', 'ATTACK', 'WANDER'];
+      const validBehaviors = ['FOLLOW', 'GUARD', 'ATTACK', 'WANDER', 'RETREAT', 'SEEK_TOWN'];
       state.allies?.forEach((a, i) => {
         if (!validBehaviors.includes(a.behavior)) throw new Error(`Ally ${i} has invalid behavior: ${a.behavior}`);
       });
@@ -898,6 +898,129 @@ export class TestRunner {
       state.allies?.forEach((a, i) => {
         if (a.speed <= 0) throw new Error(`Ally ${i} has non-positive speed`);
       });
+    });
+
+    await this.test('Ally retreats when surrounded', () => {
+      this.engine.reset();
+      this.engine.start(1);
+      const state = this.engine.getDrawState();
+      const playerPos = state.playerPositions[0];
+      state.players[0].autoAttackCooldown = 9999;
+
+      const ally = {
+        id: 9991,
+        pos: { x: playerPos.x + 30, y: playerPos.y + 10 },
+        hp: 100,
+        maxHp: 100,
+        speed: 2,
+        damage: 10,
+        type: 'SOLDIER' as const,
+        cooldown: 0,
+        targetId: null,
+        followPlayerId: null,
+        behavior: 'WANDER' as const,
+        angle: 0,
+        color: '#ffffff'
+      };
+      (this.engine as any).allies.push(ally);
+
+      const enemies = state.enemies.slice(0, 5);
+      if (enemies.length < 5) throw new Error('Need enemies to test retreat');
+      enemies.forEach((e, idx) => {
+        e.isAggressive = true;
+        const ang = (Math.PI * 2 * idx) / enemies.length;
+        e.pos.x = ally.pos.x + Math.cos(ang) * 80;
+        e.pos.y = ally.pos.y + Math.sin(ang) * 80;
+      });
+
+      this.engine.update();
+      const after = this.engine.getDrawState();
+      const updated = after.allies.find(a => a.id === ally.id);
+      if (!updated) throw new Error('Ally missing after update');
+      if (updated.behavior !== 'RETREAT') throw new Error(`Expected RETREAT, got ${updated.behavior}`);
+    });
+
+    await this.test('Ally seeks town when low HP', () => {
+      this.engine.reset();
+      this.engine.start(1);
+      const state = this.engine.getDrawState();
+      const playerPos = state.playerPositions[0];
+      state.players[0].autoAttackCooldown = 9999;
+      (this.engine as any).enemies = [];
+      (this.engine as any).town.pos = { x: playerPos.x + 5000, y: playerPos.y + 5000 };
+
+      const ally = {
+        id: 9992,
+        pos: { x: playerPos.x + 20, y: playerPos.y + 20 },
+        hp: 20,
+        maxHp: 100,
+        speed: 2,
+        damage: 10,
+        type: 'SOLDIER' as const,
+        cooldown: 0,
+        targetId: null,
+        followPlayerId: null,
+        behavior: 'WANDER' as const,
+        angle: 0,
+        color: '#ffffff'
+      };
+      (this.engine as any).allies.push(ally);
+
+      this.engine.update();
+      const after = this.engine.getDrawState();
+      const updated = after.allies.find(a => a.id === ally.id);
+      if (!updated) throw new Error('Ally missing after update');
+      if (updated.behavior !== 'SEEK_TOWN') throw new Error(`Expected SEEK_TOWN, got ${updated.behavior}`);
+    });
+
+    await this.test('Necromancer summon spawns skeletons', () => {
+      this.engine.reset();
+      this.engine.startWithCharacters([
+        { slotIndex: 0, characterId: 'necromancer', controllerId: 0, inputType: 'GAMEPAD' as InputType }
+      ]);
+      const state = this.engine.getDrawState();
+      state.players[0].equippedSpells[0] = 'spell_summon';
+      state.players[0].magic = 999;
+      state.players[0].autoAttackCooldown = 9999;
+
+      const before = state.allies.length;
+      (this.engine as any).activateSkill(0, 0);
+      const after = this.engine.getDrawState();
+      const skeletons = after.allies.filter(a => a.type === 'SKELETON' && a.source === 'SUMMON');
+      if (after.allies.length <= before || skeletons.length === 0) throw new Error('Skeletons not summoned');
+    });
+
+    await this.test('Blood drain heals summoned allies', () => {
+      this.engine.reset();
+      this.engine.startWithCharacters([
+        { slotIndex: 0, characterId: 'necromancer', controllerId: 0, inputType: 'GAMEPAD' as InputType }
+      ]);
+      const state = this.engine.getDrawState();
+      const playerPos = state.playerPositions[0];
+      state.players[0].equippedSpells[0] = 'spell_drain';
+      state.players[0].magic = 999;
+      state.players[0].autoAttackCooldown = 9999;
+
+      (this.engine as any).spawnSkeletonWarriors(0, { ...playerPos }, 1, 600);
+      const afterSpawn = this.engine.getDrawState();
+      const skeleton = afterSpawn.allies.find(a => a.type === 'SKELETON');
+      if (!skeleton) throw new Error('No skeleton to heal');
+      skeleton.hp = Math.max(1, skeleton.hp - 20);
+      const injuredHp = skeleton.hp;
+
+      const enemy = afterSpawn.enemies[0];
+      if (!enemy) throw new Error('Need enemy to drain');
+      enemy.isAggressive = true;
+      enemy.pos.x = playerPos.x + 50;
+      enemy.pos.y = playerPos.y;
+
+      this.engine.update();
+      (this.engine as any).activateSkill(0, 0);
+
+      const afterDrain = this.engine.getDrawState();
+      const healed = afterDrain.allies.find(a => a.id === skeleton.id);
+      if (!healed) throw new Error('Skeleton missing after drain');
+      if (healed.hp <= injuredHp) throw new Error('Summoned ally not healed');
     });
 
     // ===== MOUNT TESTS =====

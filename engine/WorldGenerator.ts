@@ -1,5 +1,6 @@
 
 import { Biome, Vec2, CityStyle, Campfire, Torch } from '../types';
+import { worldPerf } from './perf';
 
 // Chunk-based procedural world with lazy generation
 const CHUNK_SIZE = 16; // tiles per chunk
@@ -96,6 +97,8 @@ export class WorldGenerator {
   private seed: number;
   private noise: PerlinNoise;
   private moistureNoise: PerlinNoise;
+  private spawnRng: SeededRandom;
+  private shoreRng: SeededRandom;
   public readonly gridSize = TILE_SIZE;
   public towns: Town[] = [];
   public campfires: Campfire[] = [];
@@ -103,11 +106,16 @@ export class WorldGenerator {
   private chunks: Map<string, Chunk> = new Map();
   private nextId = 0;
   private frameCount = 0;
+  private spawnableCache: Vec2[] = [];
+  private spawnableFillInProgress = false;
+  private spawnableTarget = 0;
 
   constructor(seed = Math.random() * 10000) {
     this.seed = seed;
     this.noise = new PerlinNoise(seed);
     this.moistureNoise = new PerlinNoise(seed + 1000);
+    this.spawnRng = new SeededRandom(seed + 1337);
+    this.shoreRng = new SeededRandom(seed + 9000);
     this.placeTowns();
     this.placeCampfires();
     this.placeTorches();
@@ -129,6 +137,7 @@ export class WorldGenerator {
   }
 
   private generateChunk(cx: number, cy: number): Chunk {
+    const start = worldPerf.start('world:generateChunk');
     const size = CHUNK_SIZE * CHUNK_SIZE;
     const heightMap = new Float32Array(size);
     const moistureMap = new Float32Array(size);
@@ -165,7 +174,9 @@ export class WorldGenerator {
       }
     }
 
-    return { cx, cy, heightMap, moistureMap, biomes, lastAccess: this.frameCount };
+    const chunk = { cx, cy, heightMap, moistureMap, biomes, lastAccess: this.frameCount };
+    worldPerf.end('world:generateChunk', start, { force: true });
+    return chunk;
   }
 
   private computeBiome(worldX: number, worldY: number, height: number, moisture: number): Biome {
@@ -248,6 +259,64 @@ export class WorldGenerator {
     }
   }
 
+  private generateSpawnablePosition(): Vec2 {
+    const rng = this.spawnRng;
+    for (let i = 0; i < 50; i++) {
+      const angle = rng.next() * Math.PI * 2;
+      const dist = 500 + rng.next() * 1500;
+      const x = 8000 + Math.cos(angle) * dist;
+      const y = 8000 + Math.sin(angle) * dist;
+      const biome = this.getBiomeAt(x, y);
+      if (biome !== 'SEA' && biome !== 'MOUNTAIN' && biome !== 'SNOW' && biome !== 'RIVER' && biome !== 'TOWN') {
+        return { x, y };
+      }
+    }
+    return { x: 8600, y: 8600 };
+  }
+
+  public prefillSpawnablePositions(count: number = 40): void {
+    this.spawnableTarget = Math.max(this.spawnableTarget, count);
+    if (this.spawnableFillInProgress) return;
+    if (typeof performance === 'undefined') {
+      while (this.spawnableCache.length < this.spawnableTarget) {
+        this.spawnableCache.push(this.generateSpawnablePosition());
+      }
+      this.spawnableFillInProgress = false;
+      return;
+    }
+
+    const schedule = (cb: (deadline?: IdleDeadline) => void) => {
+      const ric = (globalThis as typeof globalThis & { requestIdleCallback?: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number }).requestIdleCallback;
+      if (ric) {
+        ric(cb, { timeout: 120 });
+      } else {
+        setTimeout(() => cb(undefined), 0);
+      }
+    };
+
+    this.spawnableFillInProgress = true;
+    const fill = (deadline?: IdleDeadline) => {
+      const start = performance.now();
+      const budget = deadline ? Math.max(4, deadline.timeRemaining()) : 8;
+      while (this.spawnableCache.length < this.spawnableTarget) {
+        this.spawnableCache.push(this.generateSpawnablePosition());
+        if (deadline) {
+          if (deadline.timeRemaining() < 3) break;
+        } else if (performance.now() - start > budget) {
+          break;
+        }
+      }
+
+      if (this.spawnableCache.length < this.spawnableTarget) {
+        schedule(fill);
+      } else {
+        this.spawnableFillInProgress = false;
+      }
+    };
+
+    schedule(fill);
+  }
+
   public getBiomeAt(worldX: number, worldY: number): Biome {
     const cx = Math.floor(worldX / CHUNK_WORLD_SIZE);
     const cy = Math.floor(worldY / CHUNK_WORLD_SIZE);
@@ -265,26 +334,30 @@ export class WorldGenerator {
   }
 
   public getSpawnablePosition(): Vec2 {
-    const rng = new SeededRandom(Date.now());
-    for (let i = 0; i < 50; i++) {
-      const angle = rng.next() * Math.PI * 2;
-      const dist = 500 + rng.next() * 1500;
-      const x = 8000 + Math.cos(angle) * dist;
-      const y = 8000 + Math.sin(angle) * dist;
-      const biome = this.getBiomeAt(x, y);
-      if (biome !== 'SEA' && biome !== 'MOUNTAIN' && biome !== 'SNOW' && biome !== 'RIVER' && biome !== 'TOWN') {
-        return { x, y };
-      }
+    if (this.spawnableCache.length > 0) {
+      const pos = this.spawnableCache.pop()!;
+      if (this.spawnableCache.length < 10) this.prefillSpawnablePositions(40);
+      return pos;
     }
-    return { x: 8600, y: 8600 };
+    const pos = this.generateSpawnablePosition();
+    if (this.spawnableCache.length < 10) this.prefillSpawnablePositions(40);
+    return pos;
+  }
+
+  public getRandomShorePosition(maxAttempts: number = 8): Vec2 | null {
+    for (let i = 0; i < maxAttempts; i++) {
+      const x = 500 + this.shoreRng.next() * 15000;
+      const y = 500 + this.shoreRng.next() * 15000;
+      if (this.getBiomeAt(x, y) === 'SHORE') return { x, y };
+    }
+    return null;
   }
 
   public getShorePositions(count: number): Vec2[] {
     const positions: Vec2[] = [];
-    const rng = new SeededRandom(this.seed + 9000);
     for (let i = 0; i < count * 20 && positions.length < count; i++) {
-      const x = 500 + rng.next() * 15000;
-      const y = 500 + rng.next() * 15000;
+      const x = 500 + this.shoreRng.next() * 15000;
+      const y = 500 + this.shoreRng.next() * 15000;
       if (this.getBiomeAt(x, y) === 'SHORE') positions.push({ x, y });
     }
     return positions;

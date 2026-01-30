@@ -46,6 +46,7 @@ export interface Mount {
   angle: number;
   alerted: boolean;
   riders: number[]; // player indices, first is driver
+  panicTimer?: number;
 }
 
 export interface WanderingTrader {
@@ -130,14 +131,21 @@ export interface Ally {
   maxHp: number;
   speed: number;
   damage: number;
-  type: 'SOLDIER' | 'ARCHER' | 'MAGE' | 'KNIGHT';
+  type: 'SOLDIER' | 'ARCHER' | 'MAGE' | 'KNIGHT' | 'SKELETON';
   cooldown: number;
   targetId: number | null;
   followPlayerId: number | null;
-  behavior: 'FOLLOW' | 'GUARD' | 'ATTACK' | 'WANDER';
+  behavior: 'FOLLOW' | 'GUARD' | 'ATTACK' | 'WANDER' | 'RETREAT' | 'SEEK_TOWN';
   angle: number;
   color: string;
   castCooldown?: number;
+  life?: number;
+  source?: 'CASTLE' | 'GHOST' | 'SUMMON';
+  ownerId?: number;
+  speech?: string;
+  speechTimer?: number;
+  nextSpeechFrame?: number;
+  targetPos?: Vec2;
 }
 
 export interface FireArea {
@@ -148,6 +156,8 @@ export interface FireArea {
   maxLife: number;
   damage: number;
   color: string;
+  sourcePlayerId?: number;
+  element?: ElementType;
 }
 
 export interface PlayerStats {
@@ -502,6 +512,7 @@ export interface LobbyState {
 export interface CharacterProgress {
   unlockedCharacters: string[];
   completedChallenges: string[];
+  challengeProgress?: Record<string, number>;
 }
 
 export type ChallengeType = 'KILL_BOSS' | 'REACH_WAVE' | 'COLLECT_GOLD' | 'NO_DAMAGE_WAVE' | 'KILL_COUNT' | 'PLAY_AS';

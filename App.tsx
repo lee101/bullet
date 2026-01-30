@@ -35,6 +35,13 @@ const createEmptySlot = (): LobbySlot => ({
 const App: React.FC = () => {
   const input = useMemo(() => new InputManager(), []);
   const engine = useMemo(() => new GameEngine(input), [input]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('perf') === '1' || params.get('test') === 'true') {
+      (window as unknown as { __ENGINE__?: GameEngine }).__ENGINE__ = engine;
+    }
+  }, [engine]);
 
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [drawState, setDrawState] = useState(engine.getDrawState());
@@ -44,6 +51,15 @@ const App: React.FC = () => {
   const [loadProgress, setLoadProgress] = useState<LoadProgress>({ loaded: 0, total: 0, phase: 'critical', percent: 0 });
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameRef = useRef(performance.now());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const quality = params.get('quality');
+    if (quality === 'low' || params.get('lowres') === '1') assetManager.setQuality('low');
+    else if (quality === 'full') assetManager.setQuality('full');
+    else assetManager.setQuality('auto');
+  }, []);
 
   // Pre-warm engine with progress tracking
   useEffect(() => {

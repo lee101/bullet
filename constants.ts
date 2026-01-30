@@ -133,6 +133,7 @@ export const ALLY_CONFIGS = {
   ARCHER: { hp: 100, speed: 2.0, damage: 18, color: '#00bfff', attackRange: 400, attackCooldown: 60 },
   MAGE: { hp: 80, speed: 1.8, damage: 35, color: '#20b2aa', attackRange: 350, attackCooldown: 90, spellCooldown: 150 },
   KNIGHT: { hp: 300, speed: 1.5, damage: 25, color: '#1e90ff', attackRange: 50, attackCooldown: 60 },
+  SKELETON: { hp: 120, speed: 2.4, damage: 16, color: '#cfcfcf', attackRange: 45, attackCooldown: 50 },
 };
 
 export const FACTION_CASTLE_CONFIG = {
