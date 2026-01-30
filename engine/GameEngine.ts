@@ -11762,6 +11762,297 @@ export class GameEngine {
     this.triggerScreenShake(15, 25);
   }
 
+  private createSupernovaExplosionEffect(pos: Vec2, radius: number) {
+    // Massive radial explosion
+    for (let wave = 0; wave < 3; wave++) {
+      const waveDelay = wave * 3;
+      const particleCount = 30 - wave * 5;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2;
+        const spd = 6 + wave * 2 + Math.random() * 2;
+
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 25 - waveDelay + Math.random() * 10,
+          maxLife: 35,
+          color: wave === 0 ? '#ffffff' : wave === 1 ? '#ffdd88' : '#ff8844',
+          size: 4 - wave
+        });
+      }
+    }
+
+    // Central blinding core
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: '#ffffff',
+        size: 5 + Math.random() * 4
+      });
+    }
+
+    // Star debris flying outward
+    for (let i = 0; i < 25; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 5;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: Math.random() > 0.5 ? '#ffcc44' : '#ff6622',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Cosmic dust cloud
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.5;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 40 + Math.random() * 25,
+        maxLife: 65,
+        color: '#aa6633',
+        size: 5 + Math.random() * 4
+      });
+    }
+
+    this.triggerScreenShake(20, 30);
+  }
+
+  private createBloodMoonAuraEffect(pos: Vec2, radius: number) {
+    // Crimson swirling particles
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.4 + Math.random() * 0.6);
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: {
+          x: Math.cos(ang + Math.PI / 2) * 2,
+          y: Math.sin(ang + Math.PI / 2) * 2 - 0.3
+        },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: Math.random() > 0.5 ? '#cc2222' : '#880000',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Moon-like crescent particles
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const r = radius * 0.7;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 1.5, y: Math.sin(ang + Math.PI / 2) * 1.5 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#dd4444',
+        size: 2.5
+      });
+    }
+
+    // Blood drips rising
+    for (let i = 0; i < 10; i++) {
+      const x = pos.x + (Math.random() - 0.5) * radius;
+
+      this.particles.push({
+        pos: { x, y: pos.y + radius * 0.3 },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1.5 - Math.random() },
+        life: 30 + Math.random() * 15,
+        maxLife: 45,
+        color: '#aa0000',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Dark inner glow
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.3;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: 0 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#330000',
+        size: 4 + Math.random() * 2
+      });
+    }
+  }
+
+  private createSpiritBombEffect(pos: Vec2, radius: number, chargeLevel: number = 1) {
+    const intensity = Math.min(chargeLevel, 3);
+
+    // Energy being gathered from all directions
+    for (let i = 0; i < 20 * intensity; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const startR = radius * (1.5 + Math.random());
+      const pullSpeed = 4 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * startR, y: pos.y + Math.sin(ang) * startR },
+        vel: { x: -Math.cos(ang) * pullSpeed, y: -Math.sin(ang) * pullSpeed },
+        life: 15 + Math.random() * 8,
+        maxLife: 23,
+        color: Math.random() > 0.6 ? '#ffffff' : Math.random() > 0.5 ? '#88ddff' : '#44aadd',
+        size: 2 + Math.random() * intensity
+      });
+    }
+
+    // Central glowing orb
+    for (let i = 0; i < 12 * intensity; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.4;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2 * intensity
+      });
+    }
+
+    // Orbiting energy particles
+    for (let ring = 0; ring < 2; ring++) {
+      const ringR = radius * (0.5 + ring * 0.3);
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2 + ring * 0.3;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * ringR, y: pos.y + Math.sin(ang) * ringR },
+          vel: { x: Math.cos(ang + Math.PI / 2) * 3, y: Math.sin(ang + Math.PI / 2) * 3 },
+          life: 12 + Math.random() * 6,
+          maxLife: 18,
+          color: '#66ccff',
+          size: 2.5
+        });
+      }
+    }
+
+    // Ascending spirit wisps
+    for (let i = 0; i < 8; i++) {
+      const x = pos.x + (Math.random() - 0.5) * radius;
+
+      this.particles.push({
+        pos: { x, y: pos.y + radius * 0.3 },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -2 - Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#aaddff',
+        size: 2 + Math.random()
+      });
+    }
+
+    if (intensity >= 2) {
+      this.triggerScreenShake(3 * intensity, 8);
+    }
+  }
+
+  private createQuantumShiftEffect(startPos: Vec2, endPos: Vec2) {
+    // Glitchy disappearance at start
+    for (let i = 0; i < 15; i++) {
+      const offsetX = (Math.random() - 0.5) * 30;
+      const offsetY = (Math.random() - 0.5) * 30;
+
+      this.particles.push({
+        pos: { x: startPos.x + offsetX, y: startPos.y + offsetY },
+        vel: { x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 4 },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: Math.random() > 0.5 ? '#00ffff' : '#ff00ff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Digital scan lines at start
+    for (let i = 0; i < 8; i++) {
+      const y = startPos.y - 15 + i * 4;
+      this.particles.push({
+        pos: { x: startPos.x - 15, y },
+        vel: { x: 6, y: 0 },
+        life: 6,
+        maxLife: 6,
+        color: '#00ffaa',
+        size: 2
+      });
+    }
+
+    // Quantum trail between positions
+    const dx = endPos.x - startPos.x;
+    const dy = endPos.y - startPos.y;
+    for (let i = 0; i < 12; i++) {
+      const t = Math.random();
+
+      this.particles.push({
+        pos: { x: startPos.x + dx * t + (Math.random() - 0.5) * 20, y: startPos.y + dy * t + (Math.random() - 0.5) * 20 },
+        vel: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: Math.random() > 0.5 ? '#44ffff' : '#ff44ff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Glitchy appearance at end
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = 20 + Math.random() * 15;
+
+      this.particles.push({
+        pos: { x: endPos.x + Math.cos(ang) * r, y: endPos.y + Math.sin(ang) * r },
+        vel: { x: -Math.cos(ang) * 3, y: -Math.sin(ang) * 3 },
+        life: 10 + Math.random() * 6,
+        maxLife: 16,
+        color: Math.random() > 0.5 ? '#00ffff' : '#ff00ff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Digital scan lines at end
+    for (let i = 0; i < 8; i++) {
+      const y = endPos.y - 15 + i * 4;
+      this.particles.push({
+        pos: { x: endPos.x + 15, y },
+        vel: { x: -6, y: 0 },
+        life: 6,
+        maxLife: 6,
+        color: '#ff00aa',
+        size: 2
+      });
+    }
+
+    // Central manifestation flash
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: endPos.x + (Math.random() - 0.5) * 10, y: endPos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 5 + Math.random() * 3,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(4, 6);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
