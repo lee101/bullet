@@ -13828,6 +13828,1262 @@ export class GameEngine {
     this.triggerScreenShake(10, 15);
   }
 
+  // ============================================
+  // WEATHER SYSTEM VFX
+  // ============================================
+
+  private createRainEffect(viewportBounds: { x: number; y: number; width: number; height: number }, intensity: number = 1) {
+    const dropCount = Math.floor(8 * intensity);
+
+    for (let i = 0; i < dropCount; i++) {
+      const x = viewportBounds.x + Math.random() * viewportBounds.width;
+      const y = viewportBounds.y - 20 + Math.random() * 50;
+      const windOffset = Math.sin(Date.now() * 0.001) * 2;
+
+      // Rain drops
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: windOffset + (Math.random() - 0.5), y: 8 + Math.random() * 4 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: intensity > 0.7 ? '#aaccff' : '#88aadd',
+        size: 1 + Math.random() * 0.5
+      });
+    }
+
+    // Occasional splash effect at ground level
+    if (Math.random() > 0.8) {
+      const splashX = viewportBounds.x + Math.random() * viewportBounds.width;
+      const splashY = viewportBounds.y + viewportBounds.height - 50 + Math.random() * 100;
+
+      for (let i = 0; i < 3; i++) {
+        const ang = Math.random() * Math.PI;
+        const spd = 1 + Math.random();
+        this.particles.push({
+          pos: { x: splashX, y: splashY },
+          vel: { x: Math.cos(ang) * spd, y: -Math.sin(ang) * spd },
+          life: 8 + Math.random() * 5,
+          maxLife: 13,
+          color: '#aaddff',
+          size: 1 + Math.random() * 0.5
+        });
+      }
+    }
+  }
+
+  private createSnowEffect(viewportBounds: { x: number; y: number; width: number; height: number }, intensity: number = 1) {
+    const flakeCount = Math.floor(6 * intensity);
+
+    for (let i = 0; i < flakeCount; i++) {
+      const x = viewportBounds.x + Math.random() * viewportBounds.width;
+      const y = viewportBounds.y - 10 + Math.random() * 30;
+      const driftX = Math.sin(Date.now() * 0.0005 + i) * 0.5;
+
+      // Snowflakes with gentle drift
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: driftX + (Math.random() - 0.5) * 0.8, y: 1 + Math.random() * 1.5 },
+        life: 80 + Math.random() * 40,
+        maxLife: 120,
+        color: Math.random() > 0.3 ? '#ffffff' : '#eeeeff',
+        size: 1.5 + Math.random() * 2
+      });
+    }
+
+    // Occasional larger snowflakes
+    if (Math.random() > 0.9) {
+      this.particles.push({
+        pos: {
+          x: viewportBounds.x + Math.random() * viewportBounds.width,
+          y: viewportBounds.y
+        },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: 0.8 + Math.random() * 0.5 },
+        life: 100 + Math.random() * 50,
+        maxLife: 150,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+  }
+
+  private createFogEffect(viewportBounds: { x: number; y: number; width: number; height: number }, density: number = 1) {
+    const patchCount = Math.floor(4 * density);
+
+    for (let i = 0; i < patchCount; i++) {
+      const x = viewportBounds.x + Math.random() * viewportBounds.width;
+      const y = viewportBounds.y + Math.random() * viewportBounds.height;
+      const driftX = Math.sin(Date.now() * 0.0003 + x * 0.01) * 0.3;
+
+      // Fog patches
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: driftX, y: (Math.random() - 0.5) * 0.1 },
+        life: 100 + Math.random() * 80,
+        maxLife: 180,
+        color: `rgba(180, 180, 190, ${0.3 + Math.random() * 0.2})`,
+        size: 15 + Math.random() * 20
+      });
+    }
+  }
+
+  private createAuroraEffect(viewportBounds: { x: number; y: number; width: number; height: number }) {
+    const waveCount = 3;
+    const time = Date.now() * 0.001;
+
+    for (let wave = 0; wave < waveCount; wave++) {
+      const baseY = viewportBounds.y + 50 + wave * 30;
+      const particlesInWave = 8;
+
+      for (let i = 0; i < particlesInWave; i++) {
+        const x = viewportBounds.x + (i / particlesInWave) * viewportBounds.width;
+        const waveOffset = Math.sin(time + x * 0.005 + wave) * 20;
+        const colors = ['#44ff88', '#88ffaa', '#44ffcc', '#88aaff', '#aa88ff'];
+
+        this.particles.push({
+          pos: { x, y: baseY + waveOffset },
+          vel: { x: (Math.random() - 0.5) * 0.3, y: (Math.random() - 0.5) * 0.5 },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: 4 + Math.random() * 3
+        });
+      }
+    }
+
+    // Aurora sparkles
+    if (Math.random() > 0.7) {
+      const sparkleX = viewportBounds.x + Math.random() * viewportBounds.width;
+      const sparkleY = viewportBounds.y + 30 + Math.random() * 100;
+      this.particles.push({
+        pos: { x: sparkleX, y: sparkleY },
+        vel: { x: 0, y: -0.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ffffff',
+        size: 1.5
+      });
+    }
+  }
+
+  private createMistRisingEffect(pos: Vec2, radius: number) {
+    // Mist particles rising from ground
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -0.5 - Math.random() * 0.8 },
+        life: 60 + Math.random() * 40,
+        maxLife: 100,
+        color: '#ccccdd',
+        size: 5 + Math.random() * 4
+      });
+    }
+  }
+
+  private createHeatWaveEffect(viewportBounds: { x: number; y: number; width: number; height: number }) {
+    const waveCount = 5;
+
+    for (let i = 0; i < waveCount; i++) {
+      const x = viewportBounds.x + Math.random() * viewportBounds.width;
+      const y = viewportBounds.y + viewportBounds.height * 0.7 + Math.random() * viewportBounds.height * 0.3;
+
+      // Heat distortion particles
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -0.8 - Math.random() * 0.5 },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: '#ffeecc',
+        size: 8 + Math.random() * 6
+      });
+    }
+  }
+
+  // ============================================
+  // BIOME AMBIENT VFX
+  // ============================================
+
+  private createForestAmbientEffect(pos: Vec2, radius: number) {
+    // Floating leaves
+    if (Math.random() > 0.6) {
+      const leafX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const leafY = pos.y - 50 + Math.random() * 30;
+      const colors = ['#558833', '#669944', '#447722', '#88aa44'];
+
+      this.particles.push({
+        pos: { x: leafX, y: leafY },
+        vel: {
+          x: (Math.random() - 0.5) * 1 + Math.sin(Date.now() * 0.002) * 0.5,
+          y: 0.5 + Math.random() * 0.5
+        },
+        life: 80 + Math.random() * 60,
+        maxLife: 140,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Fireflies at night
+    if (Math.random() > 0.8) {
+      const ffX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const ffY = pos.y + (Math.random() - 0.5) * radius;
+
+      this.particles.push({
+        pos: { x: ffX, y: ffY },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.5 },
+        life: 30 + Math.random() * 30,
+        maxLife: 60,
+        color: '#ffffaa',
+        size: 2 + Math.sin(Date.now() * 0.01 + ffX) * 1
+      });
+    }
+
+    // Pollen/spores
+    for (let i = 0; i < 2; i++) {
+      const sporeX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const sporeY = pos.y + (Math.random() - 0.5) * radius;
+
+      this.particles.push({
+        pos: { x: sporeX, y: sporeY },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -0.2 - Math.random() * 0.3 },
+        life: 50 + Math.random() * 40,
+        maxLife: 90,
+        color: '#ddffdd',
+        size: 1 + Math.random()
+      });
+    }
+  }
+
+  private createDesertAmbientEffect(pos: Vec2, radius: number) {
+    // Dust devils
+    if (Math.random() > 0.85) {
+      const dustX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const dustY = pos.y + (Math.random() - 0.5) * radius;
+
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + Date.now() * 0.005;
+        const r = 5 + i * 2;
+        this.particles.push({
+          pos: { x: dustX + Math.cos(ang) * r, y: dustY + Math.sin(ang) * r - i * 3 },
+          vel: { x: Math.cos(ang + Math.PI / 2) * 2, y: -1 - Math.random() },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: '#c9a86c',
+          size: 2 + Math.random()
+        });
+      }
+    }
+
+    // Floating sand
+    for (let i = 0; i < 3; i++) {
+      const sandX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const sandY = pos.y + radius * 0.3 + Math.random() * radius * 0.4;
+
+      this.particles.push({
+        pos: { x: sandX, y: sandY },
+        vel: { x: 1 + Math.random() * 0.5, y: (Math.random() - 0.5) * 0.3 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#ddc99a',
+        size: 1 + Math.random()
+      });
+    }
+  }
+
+  private createSnowBiomeAmbientEffect(pos: Vec2, radius: number) {
+    // Frost sparkles
+    if (Math.random() > 0.7) {
+      const sparkleX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const sparkleY = pos.y + (Math.random() - 0.5) * radius;
+
+      this.particles.push({
+        pos: { x: sparkleX, y: sparkleY },
+        vel: { x: 0, y: 0 },
+        life: 10 + Math.random() * 10,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Breath vapor (near entities)
+    if (Math.random() > 0.9) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y - 10 },
+        vel: { x: 0.3 + Math.random() * 0.3, y: -0.3 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ddddee',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Snow drift
+    for (let i = 0; i < 2; i++) {
+      const driftX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const driftY = pos.y + radius * 0.4;
+
+      this.particles.push({
+        pos: { x: driftX, y: driftY },
+        vel: { x: 0.5 + Math.random() * 0.5, y: -0.2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffffff',
+        size: 1.5 + Math.random()
+      });
+    }
+  }
+
+  private createSwampBiomeAmbientEffect(pos: Vec2, radius: number) {
+    // Bubbles rising
+    if (Math.random() > 0.7) {
+      const bubbleX = pos.x + (Math.random() - 0.5) * radius;
+      const bubbleY = pos.y + radius * 0.3;
+
+      this.particles.push({
+        pos: { x: bubbleX, y: bubbleY },
+        vel: { x: (Math.random() - 0.5) * 0.2, y: -0.8 - Math.random() * 0.5 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#88aa77',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Will-o-wisps
+    if (Math.random() > 0.9) {
+      const wispX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const wispY = pos.y + (Math.random() - 0.5) * radius * 0.5;
+      const wispColor = Math.random() > 0.5 ? '#88ffaa' : '#aaffcc';
+
+      this.particles.push({
+        pos: { x: wispX, y: wispY },
+        vel: { x: Math.sin(Date.now() * 0.003 + wispX) * 0.5, y: Math.cos(Date.now() * 0.002 + wispY) * 0.3 },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: wispColor,
+        size: 3 + Math.sin(Date.now() * 0.01) * 1.5
+      });
+    }
+
+    // Flies
+    for (let i = 0; i < 2; i++) {
+      const flyX = pos.x + (Math.random() - 0.5) * radius;
+      const flyY = pos.y + (Math.random() - 0.5) * radius * 0.5;
+
+      this.particles.push({
+        pos: { x: flyX, y: flyY },
+        vel: {
+          x: (Math.random() - 0.5) * 2,
+          y: (Math.random() - 0.5) * 2
+        },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#222222',
+        size: 1
+      });
+    }
+  }
+
+  private createVolcanicBiomeAmbientEffect(pos: Vec2, radius: number) {
+    // Floating embers
+    for (let i = 0; i < 4; i++) {
+      const emberX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const emberY = pos.y + (Math.random() - 0.5) * radius;
+
+      this.particles.push({
+        pos: { x: emberX, y: emberY },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1 - Math.random() * 1.5 },
+        life: 30 + Math.random() * 25,
+        maxLife: 55,
+        color: Math.random() > 0.5 ? '#ff6600' : '#ffaa00',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Smoke plumes
+    if (Math.random() > 0.8) {
+      const smokeX = pos.x + (Math.random() - 0.5) * radius;
+      const smokeY = pos.y + (Math.random() - 0.5) * radius * 0.5;
+
+      this.particles.push({
+        pos: { x: smokeX, y: smokeY },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -0.8 - Math.random() * 0.5 },
+        life: 50 + Math.random() * 30,
+        maxLife: 80,
+        color: '#444433',
+        size: 6 + Math.random() * 4
+      });
+    }
+
+    // Lava glow
+    if (Math.random() > 0.9) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * radius, y: pos.y + radius * 0.3 },
+        vel: { x: 0, y: 0 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ff4400',
+        size: 4 + Math.random() * 3
+      });
+    }
+  }
+
+  private createOceanAmbientEffect(pos: Vec2, radius: number) {
+    // Wave spray
+    if (Math.random() > 0.8) {
+      const sprayX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const sprayY = pos.y + radius * 0.3;
+
+      for (let i = 0; i < 4; i++) {
+        const ang = Math.random() * Math.PI;
+        const spd = 1 + Math.random() * 1.5;
+        this.particles.push({
+          pos: { x: sprayX, y: sprayY },
+          vel: { x: Math.cos(ang) * spd, y: -Math.sin(ang) * spd },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: '#aaddff',
+          size: 1.5 + Math.random()
+        });
+      }
+    }
+
+    // Foam
+    for (let i = 0; i < 2; i++) {
+      const foamX = pos.x + (Math.random() - 0.5) * radius * 2;
+      const foamY = pos.y + radius * 0.2 + Math.random() * radius * 0.2;
+
+      this.particles.push({
+        pos: { x: foamX, y: foamY },
+        vel: { x: 0.3 + Math.random() * 0.3, y: (Math.random() - 0.5) * 0.2 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Light reflection
+    if (Math.random() > 0.85) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * radius, y: pos.y + (Math.random() - 0.5) * radius * 0.5 },
+        vel: { x: 0, y: 0 },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+  }
+
+  // ============================================
+  // WEAPON IMPACT VFX VARIATIONS
+  // ============================================
+
+  private createSwordImpactEffect(pos: Vec2, impactAngle: number, isCritical: boolean = false) {
+    const intensity = isCritical ? 1.5 : 1;
+
+    // Directional sparks
+    for (let i = 0; i < 8 * intensity; i++) {
+      const spreadAngle = impactAngle + (Math.random() - 0.5) * Math.PI * 0.6;
+      const spd = 3 + Math.random() * 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(spreadAngle) * spd, y: Math.sin(spreadAngle) * spd },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: isCritical ? '#ffff88' : '#ffeecc',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Metal flash
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 4,
+      maxLife: 4,
+      color: '#ffffff',
+      size: 6 * intensity
+    });
+
+    // Slash trail
+    for (let i = 0; i < 5; i++) {
+      const trailAngle = impactAngle + Math.PI + (Math.random() - 0.5) * 0.3;
+      const dist = i * 8;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(trailAngle) * dist, y: pos.y + Math.sin(trailAngle) * dist },
+        vel: { x: Math.cos(impactAngle) * 0.5, y: Math.sin(impactAngle) * 0.5 },
+        life: 6 + i,
+        maxLife: 6 + i,
+        color: '#dddddd',
+        size: 3 - i * 0.4
+      });
+    }
+
+    if (isCritical) {
+      this.triggerScreenShake(3, 5);
+    }
+  }
+
+  private createAxeImpactEffect(pos: Vec2, impactAngle: number) {
+    // Heavy impact debris
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: Math.random() > 0.5 ? '#886644' : '#aa8866',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Shockwave ring
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 3, y: Math.sin(ang) * 3 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffddaa',
+        size: 2.5
+      });
+    }
+
+    // Dust cloud
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + (Math.random() - 0.5) * 15 },
+        vel: { x: Math.cos(ang) * 0.5, y: -0.5 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#998877',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    this.triggerScreenShake(4, 8);
+  }
+
+  private createSpearImpactEffect(pos: Vec2, impactAngle: number, isPierce: boolean = false) {
+    // Focused directional impact
+    for (let i = 0; i < 6; i++) {
+      const spreadAngle = impactAngle + (Math.random() - 0.5) * Math.PI * 0.3;
+      const spd = 4 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(spreadAngle) * spd, y: Math.sin(spreadAngle) * spd },
+        life: 10 + Math.random() * 6,
+        maxLife: 16,
+        color: '#ffffff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Pierce through effect
+    if (isPierce) {
+      for (let i = 0; i < 4; i++) {
+        const dist = 15 + i * 15;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(impactAngle) * dist, y: pos.y + Math.sin(impactAngle) * dist },
+          vel: { x: Math.cos(impactAngle) * 2, y: Math.sin(impactAngle) * 2 },
+          life: 8 + i * 2,
+          maxLife: 8 + i * 2,
+          color: '#ffdddd',
+          size: 2 - i * 0.3
+        });
+      }
+    }
+
+    // Small flash
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 3,
+      maxLife: 3,
+      color: '#ffffff',
+      size: 4
+    });
+  }
+
+  private createHammerImpactEffect(pos: Vec2) {
+    // Massive ground pound
+    for (let ring = 0; ring < 3; ring++) {
+      const particleCount = 12 + ring * 4;
+      const spd = 3 + ring * 2;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd * 0.5 },
+          life: 10 + ring * 3,
+          maxLife: 10 + ring * 3,
+          color: ring === 0 ? '#ffffff' : ring === 1 ? '#ffeeaa' : '#ddccaa',
+          size: 3 - ring * 0.5
+        });
+      }
+    }
+
+    // Ground cracks
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2 + Math.random() * 0.2;
+      const length = 30 + Math.random() * 20;
+
+      for (let j = 0; j < 4; j++) {
+        const dist = (j / 4) * length;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: 0, y: -0.3 },
+          life: 25 + Math.random() * 15,
+          maxLife: 40,
+          color: '#443322',
+          size: 2.5 - j * 0.4
+        });
+      }
+    }
+
+    // Flying debris
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: -3 - Math.random() * 4 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: Math.random() > 0.5 ? '#776655' : '#554433',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(8, 15);
+  }
+
+  private createBowImpactEffect(pos: Vec2, impactAngle: number) {
+    // Arrow stick
+    for (let i = 0; i < 3; i++) {
+      const dist = i * 5;
+      this.particles.push({
+        pos: { x: pos.x - Math.cos(impactAngle) * dist, y: pos.y - Math.sin(impactAngle) * dist },
+        vel: { x: 0, y: 0 },
+        life: 40 + i * 5,
+        maxLife: 40 + i * 5,
+        color: '#886644',
+        size: 2 - i * 0.3
+      });
+    }
+
+    // Impact sparks
+    for (let i = 0; i < 6; i++) {
+      const ang = impactAngle + Math.PI + (Math.random() - 0.5) * Math.PI * 0.5;
+      const spd = 2 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffeecc',
+        size: 1.5
+      });
+    }
+
+    // Small dust puff
+    for (let i = 0; i < 3; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -0.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aa9988',
+        size: 2 + Math.random()
+      });
+    }
+  }
+
+  private createMagicStaffImpactEffect(pos: Vec2, element: string) {
+    const elementColors: Record<string, string[]> = {
+      fire: ['#ff4400', '#ff8800', '#ffcc00', '#ffffff'],
+      ice: ['#4488ff', '#88ccff', '#aaeeff', '#ffffff'],
+      lightning: ['#ffff44', '#ffff88', '#ffffff', '#88ddff'],
+      earth: ['#886644', '#aa8866', '#ccaa88', '#ddccaa'],
+      poison: ['#44ff44', '#88ff88', '#aaffaa', '#ccffcc'],
+      dark: ['#442266', '#663388', '#8844aa', '#aa66cc'],
+      holy: ['#ffdd44', '#ffee88', '#ffffaa', '#ffffff']
+    };
+
+    const colors = elementColors[element] || elementColors.fire;
+
+    // Magical burst
+    for (let i = 0; i < 15; i++) {
+      const ang = (i / 15) * Math.PI * 2;
+      const spd = 3 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2.5 + Math.random()
+      });
+    }
+
+    // Arcane sparkles
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * 25;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: colors[0],
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Central glow
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 8,
+      maxLife: 8,
+      color: '#ffffff',
+      size: 8
+    });
+  }
+
+  // ============================================
+  // ABILITY CHARGING & RELEASE VFX
+  // ============================================
+
+  private createAbilityChargingEffect(pos: Vec2, chargeLevel: number, maxCharge: number, color: string = '#44aaff') {
+    const percent = chargeLevel / maxCharge;
+    const radius = 20 + percent * 30;
+
+    // Gathering energy particles
+    const gatherCount = Math.floor(6 * percent);
+    for (let i = 0; i < gatherCount; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const startR = radius + 30 + Math.random() * 20;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * startR, y: pos.y + Math.sin(ang) * startR },
+        vel: { x: -Math.cos(ang) * 3 * percent, y: -Math.sin(ang) * 3 * percent },
+        life: 15,
+        maxLife: 15,
+        color: color,
+        size: 2 + percent
+      });
+    }
+
+    // Rotating ring
+    const ringParticles = 8;
+    const rotation = Date.now() * 0.005 * (1 + percent);
+    for (let i = 0; i < ringParticles; i++) {
+      const ang = (i / ringParticles) * Math.PI * 2 + rotation;
+      if (i / ringParticles < percent) {
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+          vel: { x: Math.cos(ang + Math.PI / 2) * 0.5, y: Math.sin(ang + Math.PI / 2) * 0.5 },
+          life: 5,
+          maxLife: 5,
+          color: i % 2 === 0 ? '#ffffff' : color,
+          size: 2 + percent
+        });
+      }
+    }
+
+    // Center glow intensity
+    if (percent > 0.3) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 6,
+        maxLife: 6,
+        color: '#ffffff',
+        size: 4 * percent
+      });
+    }
+
+    // Max charge sparks
+    if (percent >= 1) {
+      for (let i = 0; i < 4; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 8,
+          maxLife: 8,
+          color: '#ffffff',
+          size: 2.5
+        });
+      }
+    }
+  }
+
+  private createAbilityReleaseEffect(pos: Vec2, chargeLevel: number, color: string = '#44aaff') {
+    const intensity = Math.min(chargeLevel, 3);
+
+    // Explosive release
+    for (let ring = 0; ring < 3; ring++) {
+      const particleCount = 12 + ring * 6;
+      const spd = 4 + ring * 2 + intensity * 1.5;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 12 + ring * 4,
+          maxLife: 12 + ring * 4,
+          color: ring === 0 ? '#ffffff' : color,
+          size: 3 - ring * 0.5
+        });
+      }
+    }
+
+    // Energy wave
+    for (let i = 0; i < 20 * intensity; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 5 + Math.random() * 5;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: color,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Flash
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 6,
+      maxLife: 6,
+      color: '#ffffff',
+      size: 15 * intensity
+    });
+
+    this.triggerScreenShake(5 * intensity, 10);
+  }
+
+  private createChannelingEffect(pos: Vec2, duration: number, color: string = '#aa44ff') {
+    // Continuous particles flowing upward
+    for (let i = 0; i < 4; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = 15 + Math.random() * 10;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1.5 - Math.random() },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: color,
+        size: 2 + Math.random()
+      });
+    }
+
+    // Ground rune effect
+    const runePoints = 6;
+    const runeRotation = Date.now() * 0.002;
+    for (let i = 0; i < runePoints; i++) {
+      const ang = (i / runePoints) * Math.PI * 2 + runeRotation;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 25, y: pos.y + Math.sin(ang) * 25 },
+        vel: { x: 0, y: 0 },
+        life: 5,
+        maxLife: 5,
+        color: i % 2 === 0 ? color : '#ffffff',
+        size: 2
+      });
+    }
+
+    // Inner glow pulse
+    const pulse = Math.sin(Date.now() * 0.01) * 0.5 + 0.5;
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 4,
+      maxLife: 4,
+      color: color,
+      size: 6 + pulse * 4
+    });
+  }
+
+  // ============================================
+  // MAGIC ELEMENT COMBINATION VFX
+  // ============================================
+
+  private createFireIceCombinationEffect(pos: Vec2, radius: number) {
+    // Steam explosion
+    for (let i = 0; i < 25; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 25 + Math.random() * 20,
+        maxLife: 45,
+        color: '#ddddee',
+        size: 4 + Math.random() * 4
+      });
+    }
+
+    // Fire side
+    for (let i = 0; i < 10; i++) {
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+      const spd = 2 + Math.random() * 3;
+      this.particles.push({
+        pos: { x: pos.x - 15, y: pos.y },
+        vel: { x: Math.cos(ang) * spd - 1, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: Math.random() > 0.5 ? '#ff4400' : '#ff8800',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Ice side
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+      const spd = 2 + Math.random() * 3;
+      this.particles.push({
+        pos: { x: pos.x + 15, y: pos.y },
+        vel: { x: Math.cos(ang) * spd + 1, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: Math.random() > 0.5 ? '#88ccff' : '#aaeeff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Reaction flash
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 8,
+      maxLife: 8,
+      color: '#ffffff',
+      size: 12
+    });
+
+    this.triggerScreenShake(6, 12);
+  }
+
+  private createLightningWaterCombinationEffect(pos: Vec2, radius: number) {
+    // Electrified water spreading
+    for (let ring = 0; ring < 3; ring++) {
+      const particleCount = 16 + ring * 8;
+      const ringRadius = (ring + 1) * (radius / 3);
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2;
+        const spd = 2 + ring;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * ringRadius * 0.3, y: pos.y + Math.sin(ang) * ringRadius * 0.3 },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + ring * 5,
+          maxLife: 15 + ring * 5,
+          color: i % 3 === 0 ? '#ffffff' : i % 3 === 1 ? '#88ddff' : '#ffff88',
+          size: 2.5 - ring * 0.3
+        });
+      }
+    }
+
+    // Electric arcs
+    for (let arc = 0; arc < 8; arc++) {
+      const ang = Math.random() * Math.PI * 2;
+      const length = radius * (0.5 + Math.random() * 0.5);
+
+      for (let i = 0; i < 4; i++) {
+        const dist = (i / 4) * length;
+        const wobble = (Math.random() - 0.5) * 15;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist + wobble, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+          life: 5 + Math.random() * 4,
+          maxLife: 9,
+          color: '#88eeff',
+          size: 2
+        });
+      }
+    }
+
+    // Central discharge
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 4 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 2.5
+      });
+    }
+
+    this.triggerScreenShake(7, 10);
+  }
+
+  private createPoisonFireCombinationEffect(pos: Vec2, radius: number) {
+    // Toxic flames
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+      const isToxic = Math.random() > 0.5;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: isToxic ? '#88ff44' : '#ff8844',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Noxious cloud
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.8;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 1, y: -0.8 - Math.random() * 0.5 },
+        life: 35 + Math.random() * 25,
+        maxLife: 60,
+        color: '#66aa33',
+        size: 5 + Math.random() * 4
+      });
+    }
+
+    // Burning poison drips
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd + 1 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#aaff66',
+        size: 2 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(5, 10);
+  }
+
+  private createEarthLightningCombinationEffect(pos: Vec2, radius: number) {
+    // Magnetized rock shrapnel
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: Math.random() > 0.3 ? '#886644' : '#ffff88',
+        size: 2.5 + Math.random() * 2
+      });
+    }
+
+    // Ground fractures with electricity
+    for (let crack = 0; crack < 6; crack++) {
+      const ang = (crack / 6) * Math.PI * 2 + Math.random() * 0.3;
+      const length = radius * (0.6 + Math.random() * 0.4);
+
+      for (let i = 0; i < 5; i++) {
+        const dist = (i / 5) * length;
+        const electric = Math.random() > 0.6;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * 0.5, y: -0.3 },
+          life: electric ? 6 : 30,
+          maxLife: electric ? 6 : 30,
+          color: electric ? '#ffff88' : '#554433',
+          size: electric ? 2 : 2.5 - i * 0.3
+        });
+      }
+    }
+
+    // Electric nova
+    for (let i = 0; i < 10; i++) {
+      const ang = (i / 10) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 5, y: Math.sin(ang) * 5 },
+        life: 8,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 3
+      });
+    }
+
+    this.triggerScreenShake(8, 12);
+  }
+
+  private createHolyDarkCombinationEffect(pos: Vec2, radius: number) {
+    // Twilight vortex
+    for (let layer = 0; layer < 4; layer++) {
+      const layerRadius = radius * (0.3 + layer * 0.25);
+      const particleCount = 10 + layer * 4;
+      const isHoly = layer % 2 === 0;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2 + layer * 0.5;
+        const rotDir = isHoly ? 1 : -1;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * layerRadius, y: pos.y + Math.sin(ang) * layerRadius },
+          vel: {
+            x: Math.cos(ang + Math.PI / 2 * rotDir) * 2,
+            y: Math.sin(ang + Math.PI / 2 * rotDir) * 2 + (isHoly ? -0.5 : 0.5)
+          },
+          life: 20 + layer * 5,
+          maxLife: 20 + layer * 5,
+          color: isHoly ? '#ffee88' : '#442266',
+          size: 3 - layer * 0.4
+        });
+      }
+    }
+
+    // Balance flash
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const isHoly = i % 2 === 0;
+      const spd = 4 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15,
+        maxLife: 15,
+        color: isHoly ? '#ffffff' : '#220044',
+        size: 3
+      });
+    }
+
+    // Yin-yang center
+    this.particles.push({
+      pos: { ...pos },
+      vel: { x: 0, y: 0 },
+      life: 10,
+      maxLife: 10,
+      color: '#888888',
+      size: 10
+    });
+
+    this.triggerScreenShake(6, 15);
+  }
+
+  private createAllElementsCombinationEffect(pos: Vec2, radius: number) {
+    // Ultimate elemental convergence
+    const elements = [
+      { color: '#ff4400', name: 'fire' },
+      { color: '#44aaff', name: 'ice' },
+      { color: '#ffff44', name: 'lightning' },
+      { color: '#886644', name: 'earth' },
+      { color: '#44ff44', name: 'poison' },
+      { color: '#ffdd44', name: 'holy' },
+      { color: '#442266', name: 'dark' },
+      { color: '#ff44aa', name: 'arcane' }
+    ];
+
+    // Elemental spiral
+    for (let elem = 0; elem < elements.length; elem++) {
+      const baseAng = (elem / elements.length) * Math.PI * 2;
+      const elemColor = elements[elem].color;
+
+      for (let i = 0; i < 8; i++) {
+        const spiralAng = baseAng + (i / 8) * Math.PI * 0.5;
+        const r = radius * (0.3 + (i / 8) * 0.7);
+        const spd = 3 + i * 0.5;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(spiralAng) * r * 0.3, y: pos.y + Math.sin(spiralAng) * r * 0.3 },
+          vel: { x: Math.cos(spiralAng) * spd, y: Math.sin(spiralAng) * spd },
+          life: 20 + i * 3,
+          maxLife: 20 + i * 3,
+          color: elemColor,
+          size: 3 - i * 0.2
+        });
+      }
+    }
+
+    // White core explosion
+    for (let ring = 0; ring < 4; ring++) {
+      const particleCount = 16 + ring * 8;
+      const spd = 5 + ring * 2;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + ring * 4,
+          maxLife: 15 + ring * 4,
+          color: ring < 2 ? '#ffffff' : elements[Math.floor(Math.random() * elements.length)].color,
+          size: 4 - ring * 0.5
+        });
+      }
+    }
+
+    // Rising energy pillar
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.5;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 2, y: -4 - Math.random() * 4 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: elements[Math.floor(Math.random() * elements.length)].color,
+        size: 2.5 + Math.random() * 2
+      });
+    }
+
+    // Ground scorching
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.2 },
+        life: 50 + Math.random() * 30,
+        maxLife: 80,
+        color: '#222211',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(15, 25);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
