@@ -6566,6 +6566,270 @@ export class GameEngine {
     this.triggerScreenShake(5, 10);
   }
 
+  private createExplosiveBarrelEffect(pos: Vec2, radius: number) {
+    // Massive explosion ball
+    for (let i = 0; i < 60; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 10;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 25 + Math.random() * 20,
+        maxLife: 45,
+        color: i % 4 === 0 ? '#ffffff' : (i % 3 === 0 ? '#ffaa00' : (i % 2 === 0 ? '#ff6600' : '#ff2200')),
+        size: 4 + Math.random() * 5
+      });
+    }
+
+    // Barrel debris/shrapnel
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 5 + Math.random() * 8;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 4 },
+        life: 35 + Math.random() * 25,
+        maxLife: 60,
+        color: '#8b4513',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Smoke plume rising
+    for (let i = 0; i < 25; i++) {
+      const offsetAng = Math.random() * Math.PI * 2;
+      const offsetDist = Math.random() * radius * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(offsetAng) * offsetDist, y: pos.y + Math.sin(offsetAng) * offsetDist },
+        vel: { x: (Math.random() - 0.5) * 2, y: -2 - Math.random() * 3 },
+        life: 50 + Math.random() * 40,
+        maxLife: 90,
+        color: i % 2 === 0 ? '#444444' : '#666666',
+        size: 6 + Math.random() * 5
+      });
+    }
+
+    // Ground scorch marks
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      for (let j = 0; j < 3; j++) {
+        const dist = radius * 0.3 + j * 15;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * 0.5, y: Math.sin(ang) * 0.5 },
+          life: 40 - j * 8,
+          maxLife: 40,
+          color: '#331100',
+          size: 4 - j
+        });
+      }
+    }
+
+    // Shockwave ring
+    for (let i = 0; i < 32; i++) {
+      const ang = (i / 32) * Math.PI * 2;
+      const spd = 8 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 4,
+        maxLife: 16,
+        color: '#ffcc00',
+        size: 3 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(15, 30);
+  }
+
+  private createStealthShimmerEffect(pos: Vec2, isActivating: boolean) {
+    if (isActivating) {
+      // Fade-in shimmer - particles converging
+      for (let i = 0; i < 20; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 30 + Math.random() * 20;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: -Math.cos(ang) * 2, y: -Math.sin(ang) * 2 },
+          life: 20 + Math.random() * 10,
+          maxLife: 30,
+          color: '#aabbcc',
+          size: 2 + Math.random() * 2
+        });
+      }
+
+      // Central dissolve effect
+      for (let i = 0; i < 15; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 1 + Math.random() * 2;
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + (Math.random() - 0.5) * 30 },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: '#778899',
+          size: 3 + Math.random() * 2
+        });
+      }
+    } else {
+      // Deactivating - particles dispersing outward
+      for (let i = 0; i < 25; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 3;
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y + (Math.random() - 0.5) * 30 },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: '#99aabb',
+          size: 2 + Math.random() * 2
+        });
+      }
+
+      // Reforming silhouette sparkles
+      for (let i = 0; i < 12; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + (Math.random() - 0.5) * 25 },
+          vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() },
+          life: 18 + Math.random() * 12,
+          maxLife: 30,
+          color: '#ffffff',
+          size: 2 + Math.random()
+        });
+      }
+    }
+  }
+
+  private createTrapTriggerWarning(pos: Vec2, trapType: string) {
+    // Warning flash rings
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 20; i++) {
+        const ang = (i / 20) * Math.PI * 2;
+        const radius = 15 + ring * 10;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+          vel: { x: Math.cos(ang) * (1 + ring * 0.5), y: Math.sin(ang) * (1 + ring * 0.5) },
+          life: 12 + ring * 4,
+          maxLife: 20,
+          color: '#ff0000',
+          size: 3 - ring * 0.5
+        });
+      }
+    }
+
+    // Trap-specific effects
+    if (trapType === 'spike') {
+      // Spikes rising warning
+      for (let i = 0; i < 8; i++) {
+        const offsetX = (Math.random() - 0.5) * 30;
+        this.particles.push({
+          pos: { x: pos.x + offsetX, y: pos.y + 10 },
+          vel: { x: 0, y: -4 - Math.random() * 3 },
+          life: 10 + Math.random() * 6,
+          maxLife: 16,
+          color: '#888888',
+          size: 2 + Math.random()
+        });
+      }
+    } else if (trapType === 'fire') {
+      // Fire trap ignition warning
+      for (let i = 0; i < 12; i++) {
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 25, y: pos.y },
+          vel: { x: (Math.random() - 0.5) * 2, y: -3 - Math.random() * 3 },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: i % 2 === 0 ? '#ff4400' : '#ffaa00',
+          size: 3 + Math.random() * 2
+        });
+      }
+    } else if (trapType === 'poison') {
+      // Poison gas warning
+      for (let i = 0; i < 10; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 20;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: (Math.random() - 0.5) * 1.5, y: -1 - Math.random() * 1.5 },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: '#44ff00',
+          size: 4 + Math.random() * 3
+        });
+      }
+    }
+
+    // Danger indicator particles
+    for (let i = 0; i < 6; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y - 5 },
+        vel: { x: (Math.random() - 0.5) * 1, y: -2 - Math.random() * 2 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ffff00',
+        size: 3 + Math.random()
+      });
+    }
+  }
+
+  private createWindGustEffect(pos: Vec2, direction: Vec2, width: number) {
+    const perpX = -direction.y;
+    const perpY = direction.x;
+
+    // Main wind streaks
+    for (let i = 0; i < 20; i++) {
+      const offsetPerp = (Math.random() - 0.5) * width;
+      const offsetDir = Math.random() * 50;
+      this.particles.push({
+        pos: {
+          x: pos.x + perpX * offsetPerp - direction.x * offsetDir,
+          y: pos.y + perpY * offsetPerp - direction.y * offsetDir
+        },
+        vel: { x: direction.x * (8 + Math.random() * 4), y: direction.y * (8 + Math.random() * 4) },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ccddee',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Leaf/debris carried by wind
+    for (let i = 0; i < 8; i++) {
+      const offsetPerp = (Math.random() - 0.5) * width;
+      this.particles.push({
+        pos: { x: pos.x + perpX * offsetPerp, y: pos.y + perpY * offsetPerp },
+        vel: {
+          x: direction.x * (5 + Math.random() * 3) + (Math.random() - 0.5) * 2,
+          y: direction.y * (5 + Math.random() * 3) + (Math.random() - 0.5) * 2 - 1
+        },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: Math.random() > 0.5 ? '#8b7355' : '#6b8e23',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Dust particles swirling
+    for (let i = 0; i < 12; i++) {
+      const offsetPerp = (Math.random() - 0.5) * width * 0.8;
+      const offsetDir = Math.random() * 30;
+      this.particles.push({
+        pos: {
+          x: pos.x + perpX * offsetPerp - direction.x * offsetDir,
+          y: pos.y + perpY * offsetPerp - direction.y * offsetDir
+        },
+        vel: {
+          x: direction.x * (4 + Math.random() * 2),
+          y: direction.y * (4 + Math.random() * 2) - 0.5
+        },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#aa9977',
+        size: 3 + Math.random() * 2
+      });
+    }
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
