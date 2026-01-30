@@ -8630,6 +8630,446 @@ export class GameEngine {
     this.triggerScreenShake(10, 20);
   }
 
+  private createShadowDashEffect(startPos: Vec2, endPos: Vec2, color: string = '#442266') {
+    const dx = endPos.x - startPos.x;
+    const dy = endPos.y - startPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const segments = Math.max(8, Math.floor(dist / 15));
+
+    // Shadow trail between positions
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const x = startPos.x + dx * t;
+      const y = startPos.y + dy * t;
+      const fadeSize = 1 - Math.abs(t - 0.5) * 0.5;
+
+      // Core shadow particles
+      for (let j = 0; j < 3; j++) {
+        const offset = (Math.random() - 0.5) * 15;
+        const perpX = -dy / dist * offset;
+        const perpY = dx / dist * offset;
+
+        this.particles.push({
+          pos: { x: x + perpX, y: y + perpY },
+          vel: { x: (Math.random() - 0.5) * 1, y: -0.5 - Math.random() * 0.5 },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: j === 0 ? '#110022' : color,
+          size: (3 + Math.random() * 2) * fadeSize
+        });
+      }
+    }
+
+    // Shadow wisps floating up
+    for (let i = 0; i < 10; i++) {
+      const t = Math.random();
+      const x = startPos.x + dx * t;
+      const y = startPos.y + dy * t;
+
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: (Math.random() - 0.5) * 2, y: -1.5 - Math.random() * 1.5 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#553377',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Entry and exit burst
+    for (const pos of [startPos, endPos]) {
+      for (let i = 0; i < 8; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 12 + Math.random() * 8,
+          maxLife: 20,
+          color: '#220044',
+          size: 2 + Math.random()
+        });
+      }
+    }
+  }
+
+  private createArcaneExplosionEffect(pos: Vec2, radius: number, color: string = '#8844ff') {
+    // Central bright flash
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#ffffff',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Expanding arcane rings
+    for (let ring = 0; ring < 3; ring++) {
+      const ringRadius = radius * (0.3 + ring * 0.35);
+      const particleCount = 12 + ring * 6;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2;
+        const spd = 3 + ring * 1.5;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * 5, y: pos.y + Math.sin(ang) * 5 },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 18 + ring * 5,
+          maxLife: 18 + ring * 5,
+          color: ring === 0 ? '#ffffff' : ring === 1 ? '#bb88ff' : color,
+          size: 3 - ring * 0.5
+        });
+      }
+    }
+
+    // Arcane runes flying outward
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
+      const spd = 2 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 30 + Math.random() * 15,
+        maxLife: 45,
+        color: color,
+        size: 2 + Math.random()
+      });
+    }
+
+    // Energy tendrils
+    for (let i = 0; i < 6; i++) {
+      const baseAng = (i / 6) * Math.PI * 2;
+      for (let j = 0; j < 5; j++) {
+        const dist = (j / 5) * radius;
+        const wobble = Math.sin(j * 1.5) * 0.2;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(baseAng + wobble) * dist, y: pos.y + Math.sin(baseAng + wobble) * dist },
+          vel: { x: Math.cos(baseAng) * 2, y: Math.sin(baseAng) * 2 },
+          life: 12 + j * 3,
+          maxLife: 12 + j * 3,
+          color: '#aa66ff',
+          size: 2.5 - j * 0.3
+        });
+      }
+    }
+
+    this.triggerScreenShake(7, 12);
+  }
+
+  private createSpiritProjectionEffect(sourcePos: Vec2, targetPos: Vec2, color: string = '#88ccff') {
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Ghostly trail between source and target
+    const segments = Math.max(10, Math.floor(dist / 20));
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const x = sourcePos.x + dx * t;
+      const y = sourcePos.y + dy * t;
+      const opacity = Math.sin(t * Math.PI); // Fade at ends
+
+      // Main spirit body
+      for (let j = 0; j < 2; j++) {
+        const offset = (Math.random() - 0.5) * 10;
+        this.particles.push({
+          pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
+          vel: { x: (Math.random() - 0.5) * 0.5, y: -0.5 - Math.random() * 0.5 },
+          life: (20 + Math.random() * 10) * opacity,
+          maxLife: 30,
+          color: j === 0 ? '#ffffff' : color,
+          size: (3 + Math.random() * 2) * opacity
+        });
+      }
+    }
+
+    // Spirit form at target
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * 20;
+      this.particles.push({
+        pos: { x: targetPos.x + Math.cos(ang) * r, y: targetPos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: color,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Ethereal wisps around target
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const r = 25 + Math.random() * 10;
+      this.particles.push({
+        pos: { x: targetPos.x + Math.cos(ang) * r, y: targetPos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 1.5, y: Math.sin(ang + Math.PI / 2) * 1.5 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#aaddff',
+        size: 2
+      });
+    }
+
+    // Connection sparkles
+    for (let i = 0; i < 8; i++) {
+      const t = Math.random();
+      const x = sourcePos.x + dx * t;
+      const y = sourcePos.y + dy * t;
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: 0, y: -0.3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ffffff',
+        size: 1.5
+      });
+    }
+  }
+
+  private createEnergyAbsorptionEffect(pos: Vec2, radius: number, color: string = '#ffaa44') {
+    // Particles spiraling inward from the edge
+    const spiralCount = 24;
+    for (let i = 0; i < spiralCount; i++) {
+      const ang = (i / spiralCount) * Math.PI * 2;
+      const startR = radius * (0.8 + Math.random() * 0.4);
+
+      // Calculate spiral velocity toward center
+      const inwardSpeed = 4 + Math.random() * 2;
+      const tangentSpeed = 2 + Math.random();
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * startR, y: pos.y + Math.sin(ang) * startR },
+        vel: {
+          x: -Math.cos(ang) * inwardSpeed + Math.cos(ang + Math.PI / 2) * tangentSpeed,
+          y: -Math.sin(ang) * inwardSpeed + Math.sin(ang + Math.PI / 2) * tangentSpeed
+        },
+        life: 18 + Math.random() * 8,
+        maxLife: 26,
+        color: i % 4 === 0 ? '#ffffff' : color,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Energy wisps being pulled in
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.5 + Math.random() * 0.5);
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: -Math.cos(ang) * 3, y: -Math.sin(ang) * 3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ffcc88',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Central absorption glow
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 0.5 + Math.random() * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Outer ring pulsing inward
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: -Math.cos(ang) * 2, y: -Math.sin(ang) * 2 },
+        life: 12 + Math.random() * 6,
+        maxLife: 18,
+        color: color,
+        size: 2
+      });
+    }
+  }
+
+  private createMagicMissileTrailEffect(pos: Vec2, dir: Vec2, color: string = '#ff44aa') {
+    const speed = Math.sqrt(dir.x * dir.x + dir.y * dir.y) || 1;
+    const normDir = { x: dir.x / speed, y: dir.y / speed };
+
+    // Main trail particles
+    for (let i = 0; i < 5; i++) {
+      const perpX = -normDir.y;
+      const perpY = normDir.x;
+      const offset = (Math.random() - 0.5) * 8;
+
+      this.particles.push({
+        pos: { x: pos.x + perpX * offset, y: pos.y + perpY * offset },
+        vel: { x: -normDir.x * 2 + (Math.random() - 0.5), y: -normDir.y * 2 + (Math.random() - 0.5) },
+        life: 10 + Math.random() * 6,
+        maxLife: 16,
+        color: i === 0 ? '#ffffff' : color,
+        size: 2 + Math.random()
+      });
+    }
+
+    // Sparkle particles
+    for (let i = 0; i < 3; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random();
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd - normDir.x, y: Math.sin(ang) * spd - normDir.y },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 1.5
+      });
+    }
+  }
+
+  private createGroundCrackEffect(pos: Vec2, radius: number, intensity: number = 1) {
+    // Crack lines radiating outward
+    const crackCount = 6 + Math.floor(intensity * 2);
+    for (let i = 0; i < crackCount; i++) {
+      const baseAng = (i / crackCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const length = radius * (0.6 + Math.random() * 0.4);
+
+      // Particles along crack line
+      for (let j = 0; j < 6; j++) {
+        const t = j / 6;
+        const dist = length * t;
+        const wobble = (Math.random() - 0.5) * 5;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(baseAng) * dist + wobble, y: pos.y + Math.sin(baseAng) * dist },
+          vel: { x: (Math.random() - 0.5) * 0.5, y: -0.3 - Math.random() * 0.3 },
+          life: 30 + Math.random() * 20,
+          maxLife: 50,
+          color: j < 2 ? '#443322' : '#332211',
+          size: 2 + Math.random()
+        });
+      }
+    }
+
+    // Debris chunks flying up
+    for (let i = 0; i < 10 * intensity; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.7;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 3, y: -3 - Math.random() * 3 * intensity },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: Math.random() > 0.5 ? '#554433' : '#665544',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Dust rising from cracks
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.8;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1 - Math.random() * 0.5 },
+        life: 35 + Math.random() * 20,
+        maxLife: 55,
+        color: '#887766',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    this.triggerScreenShake(5 * intensity, 15);
+  }
+
+  private createElectricFieldEffect(pos: Vec2, radius: number) {
+    // Random lightning arcs within the field
+    for (let arc = 0; arc < 6; arc++) {
+      const startAng = Math.random() * Math.PI * 2;
+      const endAng = startAng + Math.PI * (0.3 + Math.random() * 0.7);
+      const startR = radius * (0.3 + Math.random() * 0.5);
+      const endR = radius * (0.3 + Math.random() * 0.5);
+
+      const startPos = { x: pos.x + Math.cos(startAng) * startR, y: pos.y + Math.sin(startAng) * startR };
+      const endPos = { x: pos.x + Math.cos(endAng) * endR, y: pos.y + Math.sin(endAng) * endR };
+
+      const dx = endPos.x - startPos.x;
+      const dy = endPos.y - startPos.y;
+      const segments = 4;
+
+      let prevX = startPos.x;
+      let prevY = startPos.y;
+
+      for (let i = 1; i <= segments; i++) {
+        const t = i / segments;
+        let x = startPos.x + dx * t;
+        let y = startPos.y + dy * t;
+
+        if (i < segments) {
+          x += (Math.random() - 0.5) * 15;
+          y += (Math.random() - 0.5) * 15;
+        }
+
+        // Lightning segment particles
+        for (let j = 0; j < 2; j++) {
+          const pt = Math.random();
+          this.particles.push({
+            pos: { x: prevX + (x - prevX) * pt, y: prevY + (y - prevY) * pt },
+            vel: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+            life: 4 + Math.random() * 3,
+            maxLife: 7,
+            color: j === 0 ? '#ffffff' : '#88ddff',
+            size: j === 0 ? 2.5 : 2
+          });
+        }
+
+        prevX = x;
+        prevY = y;
+      }
+    }
+
+    // Static sparks around the field
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.5 + Math.random() * 0.5);
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 },
+        life: 6 + Math.random() * 4,
+        maxLife: 10,
+        color: '#aaeeff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Ambient electric glow
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.6;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: 0 },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#44ccff',
+        size: 3 + Math.random() * 2
+      });
+    }
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
