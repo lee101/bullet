@@ -9675,6 +9675,290 @@ export class GameEngine {
     }
   }
 
+  private createCorruptionSpreadEffect(pos: Vec2, radius: number) {
+    // Dark tendrils spreading outward
+    const tendrilCount = 8;
+    for (let i = 0; i < tendrilCount; i++) {
+      const baseAng = (i / tendrilCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+
+      for (let j = 0; j < 6; j++) {
+        const t = j / 6;
+        const dist = radius * t;
+        const wobble = Math.sin(j * 2) * 10;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(baseAng) * dist + wobble, y: pos.y + Math.sin(baseAng) * dist },
+          vel: { x: Math.cos(baseAng) * 1.5, y: Math.sin(baseAng) * 1.5 },
+          life: 25 + j * 3,
+          maxLife: 25 + j * 3,
+          color: j < 2 ? '#220022' : j < 4 ? '#440044' : '#660066',
+          size: 3 - t
+        });
+      }
+    }
+
+    // Corruption bubbles rising
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.7;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1 - Math.random() },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#552255',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Dark mist spreading
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 0.5 + Math.random();
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: '#331133',
+        size: 5 + Math.random() * 4
+      });
+    }
+
+    // Corrupt sparkles
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aa44aa',
+        size: 1.5
+      });
+    }
+  }
+
+  private createPurificationWaveEffect(pos: Vec2, radius: number) {
+    // Brilliant white expanding ring
+    for (let i = 0; i < 24; i++) {
+      const ang = (i / 24) * Math.PI * 2;
+      const spd = 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 3
+      });
+    }
+
+    // Secondary golden ring
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2 + Math.PI / 16;
+      const spd = 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25,
+        maxLife: 25,
+        color: '#ffdd88',
+        size: 2.5
+      });
+    }
+
+    // Rising light particles
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -2 - Math.random() * 2 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: Math.random() > 0.5 ? '#ffffff' : '#ffeecc',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Holy sparkles
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.8;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.5 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ffffff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Ground cleanse effect
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: 0, y: -1 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aaddff',
+        size: 2
+      });
+    }
+
+    this.triggerScreenShake(4, 10);
+  }
+
+  private createDimensionalTearEffect(pos: Vec2, radius: number) {
+    // Crackling reality fractures
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const length = radius * (0.5 + Math.random() * 0.5);
+
+      // Jagged fracture line
+      let prevX = pos.x;
+      let prevY = pos.y;
+      for (let j = 0; j < 5; j++) {
+        const t = (j + 1) / 5;
+        let x = pos.x + Math.cos(ang) * length * t;
+        let y = pos.y + Math.sin(ang) * length * t;
+
+        // Add jaggedness
+        if (j < 4) {
+          x += (Math.random() - 0.5) * 15;
+          y += (Math.random() - 0.5) * 15;
+        }
+
+        this.particles.push({
+          pos: { x: (prevX + x) / 2, y: (prevY + y) / 2 },
+          vel: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+          life: 12 + Math.random() * 8,
+          maxLife: 20,
+          color: Math.random() > 0.5 ? '#ffffff' : '#aa88ff',
+          size: 2.5
+        });
+
+        prevX = x;
+        prevY = y;
+      }
+    }
+
+    // Dimension bleed particles
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.6;
+      const colors = ['#ff44aa', '#44aaff', '#aa44ff', '#ffffff'];
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Energy discharge
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: '#cc88ff',
+        size: 2
+      });
+    }
+
+    // Flickering unstable core
+    for (let i = 0; i < 6; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 8 + Math.random() * 6,
+        maxLife: 14,
+        color: Math.random() > 0.5 ? '#ffffff' : '#000000',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(6, 12);
+  }
+
+  private createMeteorShowerEffect(centerPos: Vec2, radius: number, meteorCount: number = 5) {
+    for (let m = 0; m < meteorCount; m++) {
+      // Random impact position within radius
+      const impactX = centerPos.x + (Math.random() - 0.5) * radius * 2;
+      const impactY = centerPos.y + (Math.random() - 0.5) * radius * 2;
+      const impactPos = { x: impactX, y: impactY };
+
+      // Meteor trail descending
+      const trailLength = 80 + Math.random() * 40;
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.4; // Mostly downward
+
+      for (let i = 0; i < 10; i++) {
+        const t = i / 10;
+        const x = impactX - Math.cos(angle) * trailLength * t;
+        const y = impactY - Math.sin(angle) * trailLength * t - trailLength * t;
+
+        this.particles.push({
+          pos: { x, y },
+          vel: { x: Math.cos(angle) * 6, y: Math.sin(angle) * 6 + 4 },
+          life: 10 + i * 2,
+          maxLife: 10 + i * 2,
+          color: i < 3 ? '#ffffff' : i < 6 ? '#ffaa00' : '#ff4400',
+          size: 4 - t * 2
+        });
+      }
+
+      // Impact explosion
+      for (let i = 0; i < 12; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 4;
+
+        this.particles.push({
+          pos: { ...impactPos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: Math.random() > 0.3 ? '#ff6600' : '#ffaa00',
+          size: 3 + Math.random() * 2
+        });
+      }
+
+      // Impact debris
+      for (let i = 0; i < 8; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 1 + Math.random() * 3;
+
+        this.particles.push({
+          pos: { ...impactPos },
+          vel: { x: Math.cos(ang) * spd, y: -2 - Math.random() * 3 },
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          color: '#554433',
+          size: 2 + Math.random()
+        });
+      }
+    }
+
+    this.triggerScreenShake(10, 20);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
