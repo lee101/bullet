@@ -9070,6 +9070,313 @@ export class GameEngine {
     }
   }
 
+  private createGravityWellEffect(pos: Vec2, radius: number, strength: number = 1) {
+    // Warped space distortion rings
+    for (let ring = 0; ring < 4; ring++) {
+      const ringRadius = radius * (0.25 + ring * 0.25);
+      const particleCount = 8 + ring * 4;
+      const rotationOffset = ring * 0.5;
+
+      for (let i = 0; i < particleCount; i++) {
+        const ang = (i / particleCount) * Math.PI * 2 + rotationOffset;
+        // Particles orbit and slowly spiral inward
+        const orbitSpeed = 0.08 * (4 - ring);
+        const inwardSpeed = 0.5 * strength;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * ringRadius, y: pos.y + Math.sin(ang) * ringRadius },
+          vel: {
+            x: Math.cos(ang + Math.PI / 2) * orbitSpeed * ringRadius - Math.cos(ang) * inwardSpeed,
+            y: Math.sin(ang + Math.PI / 2) * orbitSpeed * ringRadius - Math.sin(ang) * inwardSpeed
+          },
+          life: 20 + ring * 5,
+          maxLife: 20 + ring * 5,
+          color: ring === 0 ? '#220044' : ring === 1 ? '#440066' : ring === 2 ? '#6600aa' : '#8800cc',
+          size: 3 - ring * 0.4
+        });
+      }
+    }
+
+    // Event horizon dark core
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: 0 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#110011',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Debris being pulled in
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.7 + Math.random() * 0.5);
+      const pullSpeed = 3 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: -Math.cos(ang) * pullSpeed, y: -Math.sin(ang) * pullSpeed },
+        life: 18 + Math.random() * 8,
+        maxLife: 26,
+        color: '#aa88cc',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Bright accretion disk glow
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const r = radius * 0.4;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 3, y: Math.sin(ang + Math.PI / 2) * 3 },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+  }
+
+  private createBerserkerRageEffect(pos: Vec2, radius: number) {
+    // Fiery rage aura particles rising
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.5 + Math.random() * 0.5);
+      const colors = ['#ff2200', '#ff4400', '#ff6600', '#ffaa00'];
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 2, y: -2 - Math.random() * 3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Angry pulsing ring
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 1.5, y: Math.sin(ang) * 1.5 },
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        color: '#ff0000',
+        size: 3
+      });
+    }
+
+    // Veiny red energy tendrils
+    for (let i = 0; i < 6; i++) {
+      const baseAng = (i / 6) * Math.PI * 2 + Math.random() * 0.3;
+      for (let j = 0; j < 4; j++) {
+        const dist = (j / 4) * radius * 0.8;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(baseAng) * dist, y: pos.y + Math.sin(baseAng) * dist },
+          vel: { x: Math.cos(baseAng) * 0.5, y: Math.sin(baseAng) * 0.5 - 0.5 },
+          life: 12 + j * 2,
+          maxLife: 12 + j * 2,
+          color: '#cc0000',
+          size: 2.5 - j * 0.3
+        });
+      }
+    }
+
+    // Smoke from the rage
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.6;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1.5 - Math.random() },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#442222',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    this.triggerScreenShake(3, 8);
+  }
+
+  private createWeaponEnchantGlowEffect(pos: Vec2, dir: Vec2, enchantType: string) {
+    const colors: Record<string, string[]> = {
+      fire: ['#ff4400', '#ff8800', '#ffcc00'],
+      ice: ['#44aaff', '#88ccff', '#ffffff'],
+      lightning: ['#ffff44', '#ffff88', '#ffffff'],
+      poison: ['#44ff44', '#88ff88', '#ccffcc'],
+      holy: ['#ffdd44', '#ffee88', '#ffffff'],
+      shadow: ['#442266', '#663388', '#8844aa']
+    };
+    const enchantColors = colors[enchantType] || colors.fire;
+
+    const speed = Math.sqrt(dir.x * dir.x + dir.y * dir.y) || 1;
+    const normDir = { x: dir.x / speed, y: dir.y / speed };
+    const perpX = -normDir.y;
+    const perpY = normDir.x;
+
+    // Enchant glow around weapon
+    for (let i = 0; i < 8; i++) {
+      const offset = (Math.random() - 0.5) * 15;
+      const alongWeapon = (Math.random() - 0.5) * 20;
+
+      this.particles.push({
+        pos: {
+          x: pos.x + perpX * offset + normDir.x * alongWeapon,
+          y: pos.y + perpY * offset + normDir.y * alongWeapon
+        },
+        vel: {
+          x: perpX * (Math.random() - 0.5) * 2 + (Math.random() - 0.5),
+          y: perpY * (Math.random() - 0.5) * 2 - 0.5
+        },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: enchantColors[Math.floor(Math.random() * enchantColors.length)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Trailing sparkles
+    for (let i = 0; i < 4; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: -normDir.x * 1.5, y: -normDir.y * 1.5 },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 1.5
+      });
+    }
+  }
+
+  private createSmokeBombEffect(pos: Vec2, radius: number) {
+    // Dense smoke cloud expanding
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.3;
+      const expandSpeed = 1 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang) * expandSpeed, y: Math.sin(ang) * expandSpeed - 0.5 },
+        life: 50 + Math.random() * 30,
+        maxLife: 80,
+        color: `rgb(${60 + Math.random() * 30}, ${60 + Math.random() * 30}, ${70 + Math.random() * 30})`,
+        size: 5 + Math.random() * 5
+      });
+    }
+
+    // Inner darker smoke
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.2;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 1.5, y: -1 - Math.random() },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: '#333344',
+        size: 4 + Math.random() * 4
+      });
+    }
+
+    // Initial poof burst
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const spd = 3 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#555566',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Swirling wisps
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.3 + Math.random() * 0.4);
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 2, y: Math.sin(ang + Math.PI / 2) * 2 - 0.5 },
+        life: 35 + Math.random() * 20,
+        maxLife: 55,
+        color: '#666677',
+        size: 3 + Math.random() * 2
+      });
+    }
+  }
+
+  private createNecroticBurstEffect(pos: Vec2, radius: number) {
+    // Sickly green-black explosion
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 18 + Math.random() * 12,
+        maxLife: 30,
+        color: Math.random() > 0.5 ? '#225522' : '#112211',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Skull-like wisps rising
+    for (let i = 0; i < 8; i++) {
+      const x = pos.x + (Math.random() - 0.5) * radius;
+      this.particles.push({
+        pos: { x, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 1, y: -2 - Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#88aa88',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Dark energy ring
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius * 0.5, y: pos.y + Math.sin(ang) * radius * 0.5 },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 12 + Math.random() * 6,
+        maxLife: 18,
+        color: '#334433',
+        size: 2.5
+      });
+    }
+
+    // Bone fragment particles
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ccccaa',
+        size: 2
+      });
+    }
+
+    this.triggerScreenShake(5, 10);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
