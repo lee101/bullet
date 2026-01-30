@@ -12053,6 +12053,285 @@ export class GameEngine {
     this.triggerScreenShake(4, 6);
   }
 
+  private createApocalypseRainEffect(centerPos: Vec2, radius: number, dropCount: number = 20) {
+    // Fire and brimstone raining from sky
+    for (let i = 0; i < dropCount; i++) {
+      const x = centerPos.x + (Math.random() - 0.5) * radius * 2;
+      const startY = centerPos.y - 150 - Math.random() * 100;
+      const speed = 8 + Math.random() * 4;
+
+      // Flaming projectile
+      for (let j = 0; j < 4; j++) {
+        this.particles.push({
+          pos: { x: x + (Math.random() - 0.5) * 5, y: startY + j * 8 },
+          vel: { x: (Math.random() - 0.5) * 2, y: speed },
+          life: 20 + Math.random() * 10,
+          maxLife: 30,
+          color: j === 0 ? '#ffffff' : j === 1 ? '#ffaa00' : '#ff4400',
+          size: 4 - j
+        });
+      }
+    }
+
+    // Smoke trails
+    for (let i = 0; i < dropCount / 2; i++) {
+      const x = centerPos.x + (Math.random() - 0.5) * radius * 2;
+      const y = centerPos.y - 50 - Math.random() * 100;
+
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: (Math.random() - 0.5) * 1, y: 2 + Math.random() },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#444444',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Ground impact explosions
+    for (let i = 0; i < 8; i++) {
+      const impactX = centerPos.x + (Math.random() - 0.5) * radius * 1.5;
+      for (let j = 0; j < 6; j++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 3;
+
+        this.particles.push({
+          pos: { x: impactX, y: centerPos.y },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+          life: 12 + Math.random() * 8,
+          maxLife: 20,
+          color: Math.random() > 0.5 ? '#ff6600' : '#ffaa00',
+          size: 2 + Math.random() * 2
+        });
+      }
+    }
+
+    this.triggerScreenShake(8, 20);
+  }
+
+  private createDragonBreathEffect(pos: Vec2, angle: number, length: number = 120, width: number = 60) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    // Main fire stream
+    for (let i = 0; i < 25; i++) {
+      const dist = Math.random() * length;
+      const spread = (Math.random() - 0.5) * width * (dist / length);
+      const perpCos = Math.cos(angle + Math.PI / 2);
+      const perpSin = Math.sin(angle + Math.PI / 2);
+
+      const x = pos.x + cos * dist + perpCos * spread;
+      const y = pos.y + sin * dist + perpSin * spread;
+      const t = dist / length;
+
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: cos * 4 + (Math.random() - 0.5) * 2, y: sin * 4 + (Math.random() - 0.5) * 2 - 0.5 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: t < 0.3 ? '#ffffff' : t < 0.6 ? '#ffcc00' : '#ff4400',
+        size: 4 - t * 2
+      });
+    }
+
+    // Core intense flames
+    for (let i = 0; i < 10; i++) {
+      const dist = Math.random() * length * 0.5;
+      const x = pos.x + cos * dist;
+      const y = pos.y + sin * dist;
+
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: cos * 5, y: sin * 5 },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Ember sparks
+    for (let i = 0; i < 15; i++) {
+      const dist = Math.random() * length * 0.8;
+      const spread = (Math.random() - 0.5) * width * 0.8;
+      const perpCos = Math.cos(angle + Math.PI / 2);
+      const perpSin = Math.sin(angle + Math.PI / 2);
+
+      this.particles.push({
+        pos: { x: pos.x + cos * dist + perpCos * spread, y: pos.y + sin * dist + perpSin * spread },
+        vel: { x: cos * 2 + (Math.random() - 0.5) * 3, y: sin * 2 - 1 - Math.random() * 2 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ff8800',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Smoke at edges
+    for (let i = 0; i < 8; i++) {
+      const dist = length * (0.5 + Math.random() * 0.5);
+      const spread = (Math.random() > 0.5 ? 1 : -1) * width * 0.4;
+      const perpCos = Math.cos(angle + Math.PI / 2);
+      const perpSin = Math.sin(angle + Math.PI / 2);
+
+      this.particles.push({
+        pos: { x: pos.x + cos * dist + perpCos * spread, y: pos.y + sin * dist + perpSin * spread },
+        vel: { x: (Math.random() - 0.5) * 1, y: -1 - Math.random() },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#333333',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    this.triggerScreenShake(5, 10);
+  }
+
+  private createCosmicRiftEffect(pos: Vec2, width: number, height: number) {
+    // Swirling cosmic energy
+    for (let i = 0; i < 30; i++) {
+      const t = Math.random();
+      const x = pos.x + (Math.random() - 0.5) * width * 0.5;
+      const y = pos.y + (Math.random() - 0.5) * height;
+
+      const colors = ['#ff00ff', '#00ffff', '#ffff00', '#ff00aa', '#00aaff'];
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Rift edge distortion
+    for (let i = 0; i < 20; i++) {
+      const t = i / 20;
+      const y = pos.y - height / 2 + t * height;
+      const side = i % 2 === 0 ? -1 : 1;
+      const x = pos.x + side * width * 0.25;
+
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: side * 0.5, y: (Math.random() - 0.5) * 1 },
+        life: 18 + Math.random() * 8,
+        maxLife: 26,
+        color: '#aa44ff',
+        size: 2.5
+      });
+    }
+
+    // Stars being pulled in
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = 50 + Math.random() * 40;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: -Math.cos(ang) * 2, y: -Math.sin(ang) * 2 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ffffff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Dark void center
+    for (let i = 0; i < 8; i++) {
+      const x = pos.x + (Math.random() - 0.5) * width * 0.3;
+      const y = pos.y + (Math.random() - 0.5) * height * 0.5;
+
+      this.particles.push({
+        pos: { x, y },
+        vel: { x: 0, y: 0 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#110022',
+        size: 5 + Math.random() * 3
+      });
+    }
+
+    this.triggerScreenShake(6, 12);
+  }
+
+  private createWrathOfNatureEffect(pos: Vec2, radius: number) {
+    // Vines erupting from ground
+    for (let vine = 0; vine < 8; vine++) {
+      const baseAng = (vine / 8) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const vineLength = radius * (0.5 + Math.random() * 0.5);
+
+      for (let i = 0; i < 6; i++) {
+        const t = i / 6;
+        const dist = vineLength * t;
+        const wobble = Math.sin(t * Math.PI * 2) * 10;
+        const perpAng = baseAng + Math.PI / 2;
+
+        this.particles.push({
+          pos: {
+            x: pos.x + Math.cos(baseAng) * dist + Math.cos(perpAng) * wobble,
+            y: pos.y + Math.sin(baseAng) * dist - t * 30
+          },
+          vel: { x: Math.cos(baseAng) * 1, y: -2 - Math.random() },
+          life: 20 + i * 3,
+          maxLife: 20 + i * 3,
+          color: i < 2 ? '#44aa22' : i < 4 ? '#338818' : '#225510',
+          size: 3 - t
+        });
+      }
+    }
+
+    // Leaves swirling
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: {
+          x: Math.cos(ang + Math.PI / 2) * 2 + (Math.random() - 0.5) * 2,
+          y: -1 - Math.random() * 2
+        },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: Math.random() > 0.5 ? '#66cc44' : '#88dd66',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Earth debris from ground
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.7;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r * 0.3 },
+        vel: { x: (Math.random() - 0.5) * 3, y: -3 - Math.random() * 3 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#664422',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Pollen/spores floating
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.8;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r - 20 },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -0.5 - Math.random() * 0.5 },
+        life: 35 + Math.random() * 20,
+        maxLife: 55,
+        color: '#aadd88',
+        size: 1.5
+      });
+    }
+
+    this.triggerScreenShake(7, 15);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
