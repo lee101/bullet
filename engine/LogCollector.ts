@@ -20,10 +20,20 @@ const stringifyArg = (arg: unknown): string => {
   }
 };
 
-const record = (level: LogLevel, args: unknown[]) => {
+const sendToServer = (level: LogLevel, message: string, stack?: string) => {
+  if (typeof fetch === 'undefined') return;
+  fetch('/api/error', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ level, message, stack })
+  }).catch(() => {});
+};
+
+const record = (level: LogLevel, args: unknown[], reportToServer = false) => {
   const message = args.map(stringifyArg).join(' ');
   entries.push({ level, message, time: typeof performance !== 'undefined' ? performance.now() : Date.now() });
   if (entries.length > maxEntries) entries.shift();
+  if (reportToServer) sendToServer(level, message);
 };
 
 export const logCollector = {
@@ -34,17 +44,21 @@ export const logCollector = {
     (['log', 'info', 'warn', 'error', 'debug'] as LogLevel[]).forEach(level => {
       const original = console[level].bind(console);
       console[level] = (...args: unknown[]) => {
-        record(level, args);
+        record(level, args, level === 'error' || level === 'warn');
         original(...args);
       };
     });
 
     if (typeof window !== 'undefined') {
       window.addEventListener('error', event => {
-        record('error', [event.message, event.filename, event.lineno, event.colno]);
+        const msg = `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`;
+        record('error', [msg], true);
+        sendToServer('error', msg, event.error?.stack);
       });
       window.addEventListener('unhandledrejection', event => {
-        record('error', ['UnhandledRejection', event.reason]);
+        const reason = event.reason instanceof Error ? event.reason.stack || event.reason.message : String(event.reason);
+        record('error', ['UnhandledRejection', reason], true);
+        sendToServer('error', 'UnhandledRejection: ' + reason);
       });
 
       (window as unknown as { __LOGS__?: LogEntry[] }).__LOGS__ = entries;
