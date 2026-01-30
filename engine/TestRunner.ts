@@ -97,9 +97,11 @@ export class TestRunner {
       this.engine.reset();
       this.engine.start(1);
       this.engine.pause();
-      if (this.engine.state !== GameState.PAUSED) throw new Error('Should be PAUSED');
+      const pausedState = this.engine.state;
+      if (pausedState !== GameState.PAUSED) throw new Error('Should be PAUSED');
       this.engine.resume();
-      if (this.engine.state !== GameState.PLAYING) throw new Error('Should be PLAYING after resume');
+      const resumedState = this.engine.state;
+      if (resumedState !== GameState.PLAYING) throw new Error('Should be PLAYING after resume');
     });
 
     await this.test('Shop state accessible', () => {
@@ -107,9 +109,11 @@ export class TestRunner {
       this.engine.start(1);
       // Manually set shop state for test
       (this.engine as any).state = GameState.SHOP;
-      if (this.engine.state !== GameState.SHOP) throw new Error('Should be SHOP');
+      const shopState = this.engine.state;
+      if (shopState !== GameState.SHOP) throw new Error('Should be SHOP');
       this.engine.exitShop();
-      if (this.engine.state !== GameState.PLAYING) throw new Error('Should exit to PLAYING');
+      const exitedState = this.engine.state;
+      if (exitedState !== GameState.PLAYING) throw new Error('Should exit to PLAYING');
     });
 
     await this.test('lastAimAngle property exists on player', () => {
