@@ -11220,6 +11220,256 @@ export class GameEngine {
     }
   }
 
+  private createBlackHoleCollapseEffect(pos: Vec2, radius: number) {
+    // Everything being sucked inward violently
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const startR = radius * (0.8 + Math.random() * 0.5);
+      const pullSpeed = 5 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * startR, y: pos.y + Math.sin(ang) * startR },
+        vel: { x: -Math.cos(ang) * pullSpeed, y: -Math.sin(ang) * pullSpeed },
+        life: 15 + Math.random() * 8,
+        maxLife: 23,
+        color: Math.random() > 0.7 ? '#ffffff' : Math.random() > 0.5 ? '#4400aa' : '#220066',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Spiral accretion disk
+    for (let ring = 0; ring < 3; ring++) {
+      const ringR = radius * (0.3 + ring * 0.2);
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2 + ring * 0.5;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * ringR, y: pos.y + Math.sin(ang) * ringR },
+          vel: {
+            x: Math.cos(ang + Math.PI / 2) * 3 - Math.cos(ang) * 1,
+            y: Math.sin(ang + Math.PI / 2) * 3 - Math.sin(ang) * 1
+          },
+          life: 12 + ring * 3,
+          maxLife: 12 + ring * 3,
+          color: ring === 0 ? '#6600cc' : ring === 1 ? '#4400aa' : '#220088',
+          size: 2.5 - ring * 0.3
+        });
+      }
+    }
+
+    // Final collapse flash
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 0.5 + Math.random();
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 15, y: pos.y + (Math.random() - 0.5) * 15 },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Dark core
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#000000',
+        size: 5 + Math.random() * 3
+      });
+    }
+
+    this.triggerScreenShake(12, 20);
+  }
+
+  private createRageExplosionEffect(pos: Vec2, radius: number) {
+    // Violent red explosion
+    for (let i = 0; i < 25; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 4 + Math.random() * 5;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: Math.random() > 0.3 ? '#ff2200' : '#ff6600',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Rage aura expanding
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * 5, y: Math.sin(ang) * 5 },
+        life: 15,
+        maxLife: 15,
+        color: '#cc0000',
+        size: 3
+      });
+    }
+
+    // Angry sparks
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 4;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ffaa00',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Central fury flash
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 6 + Math.random() * 4,
+        maxLife: 10,
+        color: '#ffffff',
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(10, 15);
+  }
+
+  private createShieldBreakEffect(pos: Vec2, radius: number, shieldColor: string = '#4488ff') {
+    // Shield shattering into fragments
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const startR = radius * (0.8 + Math.random() * 0.3);
+      const spd = 3 + Math.random() * 4;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * startR, y: pos.y + Math.sin(ang) * startR },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: shieldColor,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Bright flash at break point
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 2;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Energy dissipating
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 2, y: -1 - Math.random() },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: shieldColor,
+        size: 2 + Math.random()
+      });
+    }
+
+    // Crackling electricity
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * 0.5 + Math.random() * radius * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 4 },
+        life: 5 + Math.random() * 4,
+        maxLife: 9,
+        color: '#aaddff',
+        size: 1.5
+      });
+    }
+
+    this.triggerScreenShake(6, 10);
+  }
+
+  private createTelekinesisLiftEffect(pos: Vec2, radius: number) {
+    // Objects being lifted (particles rising)
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      const startY = pos.y + 20;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: startY },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -2 - Math.random() * 2 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: Math.random() > 0.5 ? '#aa88ff' : '#8866cc',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Psychic energy glow at center
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.3;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.5 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#bb99ff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Spiral energy lines
+    for (let spiral = 0; spiral < 3; spiral++) {
+      for (let i = 0; i < 8; i++) {
+        const t = i / 8;
+        const ang = t * Math.PI * 2 + spiral * Math.PI * 2 / 3;
+        const r = radius * t;
+        const y = pos.y - t * 30;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * r, y },
+          vel: { x: Math.cos(ang + Math.PI / 2) * 1, y: -1.5 },
+          life: 15 + i * 2,
+          maxLife: 15 + i * 2,
+          color: '#9966dd',
+          size: 2 - t * 0.5
+        });
+      }
+    }
+
+    // Ground disturbance
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius * 0.8, y: pos.y + 15 },
+        vel: { x: 0, y: -1 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#665544',
+        size: 2
+      });
+    }
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
