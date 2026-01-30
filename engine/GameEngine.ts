@@ -7698,6 +7698,591 @@ export class GameEngine {
     this.triggerScreenShake(6, 12);
   }
 
+  private createTimeWarpEffect(pos: Vec2, radius: number, isActivating: boolean) {
+    // Circular distortion ring
+    const ringParticles = 24;
+    for (let i = 0; i < ringParticles; i++) {
+      const ang = (i / ringParticles) * Math.PI * 2;
+      const dist = isActivating ? 0 : radius;
+      const targetDist = isActivating ? radius : 0;
+      const spd = (targetDist - dist) / 20;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25,
+        maxLife: 25,
+        color: '#88ccff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Spiral time particles
+    for (let layer = 0; layer < 3; layer++) {
+      const spiralCount = 8;
+      for (let i = 0; i < spiralCount; i++) {
+        const ang = (i / spiralCount) * Math.PI * 2 + layer * 0.3;
+        const r = radius * (0.3 + layer * 0.3);
+        const rotSpeed = isActivating ? 0.15 : -0.15;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+          vel: { x: Math.sin(ang) * rotSpeed * r, y: -Math.cos(ang) * rotSpeed * r },
+          life: 30 + Math.random() * 10,
+          maxLife: 40,
+          color: layer === 0 ? '#ffffff' : layer === 1 ? '#aaddff' : '#6699cc',
+          size: 4 - layer
+        });
+      }
+    }
+
+    // Center flash
+    if (isActivating) {
+      for (let i = 0; i < 12; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 1 + Math.random() * 2;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: '#ffffff',
+          size: 2 + Math.random() * 2
+        });
+      }
+    }
+
+    // Floating clock-like particles
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.5 - Math.random() * 0.5 },
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color: '#ccddff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(isActivating ? 5 : 3, 15);
+  }
+
+  private createChainLightningEffect(positions: Vec2[], color: string = '#44ddff') {
+    // Create lightning between each pair of positions
+    for (let i = 0; i < positions.length - 1; i++) {
+      const start = positions[i];
+      const end = positions[i + 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const segments = Math.max(4, Math.floor(dist / 20));
+
+      // Jagged lightning path
+      let prevX = start.x;
+      let prevY = start.y;
+      for (let j = 1; j <= segments; j++) {
+        const t = j / segments;
+        let x = start.x + dx * t;
+        let y = start.y + dy * t;
+
+        // Add jagged offset except for endpoints
+        if (j < segments) {
+          const perpX = -dy / dist;
+          const perpY = dx / dist;
+          const offset = (Math.random() - 0.5) * 30;
+          x += perpX * offset;
+          y += perpY * offset;
+        }
+
+        // Main bolt particles
+        for (let k = 0; k < 3; k++) {
+          const segDx = x - prevX;
+          const segDy = y - prevY;
+          const pt = Math.random();
+          this.particles.push({
+            pos: { x: prevX + segDx * pt, y: prevY + segDy * pt },
+            vel: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 },
+            life: 6 + Math.random() * 4,
+            maxLife: 10,
+            color: k === 0 ? '#ffffff' : color,
+            size: k === 0 ? 3 : 2 + Math.random()
+          });
+        }
+
+        prevX = x;
+        prevY = y;
+      }
+
+      // Branch sparks at connection points
+      const branchCount = 3 + Math.floor(Math.random() * 3);
+      for (let b = 0; b < branchCount; b++) {
+        const t = Math.random();
+        const branchX = start.x + dx * t;
+        const branchY = start.y + dy * t;
+        const branchAng = Math.random() * Math.PI * 2;
+        const branchLen = 15 + Math.random() * 25;
+
+        for (let s = 0; s < 4; s++) {
+          const st = s / 4;
+          this.particles.push({
+            pos: {
+              x: branchX + Math.cos(branchAng) * branchLen * st,
+              y: branchY + Math.sin(branchAng) * branchLen * st
+            },
+            vel: {
+              x: Math.cos(branchAng) * 2 + (Math.random() - 0.5) * 2,
+              y: Math.sin(branchAng) * 2 + (Math.random() - 0.5) * 2
+            },
+            life: 4 + Math.random() * 3,
+            maxLife: 7,
+            color: color,
+            size: 1.5 + Math.random()
+          });
+        }
+      }
+
+      // Impact sparks at each node
+      for (let s = 0; s < 8; s++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 3;
+        this.particles.push({
+          pos: { ...end },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 8 + Math.random() * 6,
+          maxLife: 14,
+          color: '#ffffff',
+          size: 2 + Math.random()
+        });
+      }
+    }
+
+    this.triggerScreenShake(4, 8);
+  }
+
+  private createHealingAuraEffect(pos: Vec2, radius: number, intensity: number = 1) {
+    // Rising healing particles
+    const particleCount = Math.floor(12 * intensity);
+    for (let i = 0; i < particleCount; i++) {
+      const ang = (i / particleCount) * Math.PI * 2 + Math.random() * 0.3;
+      const r = radius * (0.3 + Math.random() * 0.7);
+      const colors = ['#44ff88', '#88ffaa', '#aaffcc', '#ffffff'];
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -1 - Math.random() * 1.5 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Gentle ring pulse
+    const ringParticles = 16;
+    for (let i = 0; i < ringParticles; i++) {
+      const ang = (i / ringParticles) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 0.3, y: Math.sin(ang) * 0.3 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#66ffaa',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Center glow particles
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 0.5 + Math.random() * 0.5;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 0.5 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Sparkle crosses
+    for (let i = 0; i < 4; i++) {
+      const sparkleAng = Math.random() * Math.PI * 2;
+      const sparkleR = Math.random() * radius * 0.8;
+      const sparklePos = {
+        x: pos.x + Math.cos(sparkleAng) * sparkleR,
+        y: pos.y + Math.sin(sparkleAng) * sparkleR
+      };
+
+      // Create cross pattern
+      for (let d = 0; d < 4; d++) {
+        const dir = (d / 4) * Math.PI * 2;
+        this.particles.push({
+          pos: { ...sparklePos },
+          vel: { x: Math.cos(dir) * 1.5, y: Math.sin(dir) * 1.5 },
+          life: 10 + Math.random() * 5,
+          maxLife: 15,
+          color: '#ffffff',
+          size: 1.5
+        });
+      }
+    }
+  }
+
+  private createVortexPullEffect(pos: Vec2, radius: number, intensity: number = 1) {
+    // Particles spiraling inward
+    const spiralCount = 20;
+    for (let i = 0; i < spiralCount; i++) {
+      const ang = (i / spiralCount) * Math.PI * 4 + Math.random() * 0.5;
+      const r = radius * (0.8 + Math.random() * 0.2);
+      const pullSpeed = 3 + intensity * 2;
+
+      // Calculate spiral velocity (inward + tangential)
+      const towardCenter = { x: -Math.cos(ang), y: -Math.sin(ang) };
+      const tangent = { x: -Math.sin(ang), y: Math.cos(ang) };
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: {
+          x: towardCenter.x * pullSpeed + tangent.x * pullSpeed * 0.5,
+          y: towardCenter.y * pullSpeed + tangent.y * pullSpeed * 0.5
+        },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: i % 3 === 0 ? '#9944ff' : i % 3 === 1 ? '#6622cc' : '#4411aa',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Outer debris ring
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (1 + Math.random() * 0.3);
+      const pullSpeed = 2 + intensity;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: -Math.cos(ang) * pullSpeed, y: -Math.sin(ang) * pullSpeed },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#775599',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Central dark core
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 0.5 + Math.random();
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: '#220044',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Bright center flash
+    for (let i = 0; i < 5; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 8 + Math.random() * 5,
+        maxLife: 13,
+        color: '#ffffff',
+        size: 2 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(3 * intensity, 10);
+  }
+
+  private createBladeWhirlwindEffect(pos: Vec2, radius: number, rotation: number = 0) {
+    // Spinning blade arc particles
+    const bladeCount = 6;
+    for (let b = 0; b < bladeCount; b++) {
+      const baseAng = (b / bladeCount) * Math.PI * 2 + rotation;
+      const bladeLength = radius * 0.8;
+
+      // Each blade is a line of particles
+      for (let i = 0; i < 8; i++) {
+        const t = i / 8;
+        const r = radius * 0.2 + bladeLength * t;
+        const wobble = Math.sin(t * Math.PI) * 0.1;
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(baseAng + wobble) * r, y: pos.y + Math.sin(baseAng + wobble) * r },
+          vel: {
+            x: Math.cos(baseAng + Math.PI / 2) * 3 + (Math.random() - 0.5),
+            y: Math.sin(baseAng + Math.PI / 2) * 3 + (Math.random() - 0.5)
+          },
+          life: 8 + Math.random() * 4,
+          maxLife: 12,
+          color: i < 2 ? '#ffffff' : i < 5 ? '#cccccc' : '#999999',
+          size: 3 - t * 1.5
+        });
+      }
+    }
+
+    // Metallic sparks flying off
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.5 + Math.random() * 0.5);
+      const tangent = ang + Math.PI / 2;
+      const spd = 4 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(tangent) * spd, y: Math.sin(tangent) * spd },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: Math.random() > 0.5 ? '#ffeecc' : '#ffffff',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Wind swoosh particles
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.8 + Math.random() * 0.4);
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 2, y: Math.sin(ang + Math.PI / 2) * 2 },
+        life: 12 + Math.random() * 6,
+        maxLife: 18,
+        color: '#aabbcc',
+        size: 2 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(2, 5);
+  }
+
+  private createPoisonCloudEffect(pos: Vec2, radius: number, density: number = 1) {
+    // Billowing cloud particles
+    const cloudCount = Math.floor(20 * density);
+    for (let i = 0; i < cloudCount; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      const drift = {
+        x: (Math.random() - 0.5) * 1.5,
+        y: -0.3 - Math.random() * 0.7 // Slow rise
+      };
+
+      const greenShade = Math.floor(Math.random() * 100) + 100;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: drift,
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: `rgb(${Math.floor(greenShade * 0.3)}, ${greenShade}, ${Math.floor(greenShade * 0.2)})`,
+        size: 4 + Math.random() * 4
+      });
+    }
+
+    // Bubbling particles at bottom
+    for (let i = 0; i < 8; i++) {
+      const x = pos.x + (Math.random() - 0.5) * radius * 1.5;
+      this.particles.push({
+        pos: { x, y: pos.y + radius * 0.3 },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: -2 - Math.random() * 2 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#88ff44',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Toxic drips
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = radius * (0.3 + Math.random() * 0.7);
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: 1.5 + Math.random() },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#44aa22',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Skull/danger sparkles (rare bright particles)
+    for (let i = 0; i < 3; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.6;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.5 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ccff88',
+        size: 2
+      });
+    }
+  }
+
+  private createFireTornadoEffect(pos: Vec2, radius: number, height: number = 100) {
+    // Spiraling fire particles rising upward
+    const spiralLayers = 5;
+    for (let layer = 0; layer < spiralLayers; layer++) {
+      const layerY = pos.y - (layer / spiralLayers) * height;
+      const layerRadius = radius * (1 - layer / spiralLayers * 0.6);
+      const particlesInLayer = 8;
+
+      for (let i = 0; i < particlesInLayer; i++) {
+        const ang = (i / particlesInLayer) * Math.PI * 2 + layer * 0.5;
+        const colors = ['#ff4400', '#ff8800', '#ffcc00', '#ffffff'];
+        const colorIndex = Math.min(layer, colors.length - 1);
+
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * layerRadius, y: layerY },
+          vel: {
+            x: Math.cos(ang + Math.PI / 2) * 4 + (Math.random() - 0.5) * 2,
+            y: -3 - Math.random() * 3
+          },
+          life: 15 + Math.random() * 10,
+          maxLife: 25,
+          color: colors[colorIndex],
+          size: 4 - layer * 0.5 + Math.random()
+        });
+      }
+    }
+
+    // Core column fire
+    for (let i = 0; i < 12; i++) {
+      const y = pos.y - Math.random() * height;
+      const radiusAtHeight = radius * 0.3 * (1 - (pos.y - y) / height * 0.5);
+      const ang = Math.random() * Math.PI * 2;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radiusAtHeight, y },
+        vel: { x: (Math.random() - 0.5) * 3, y: -4 - Math.random() * 3 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: Math.random() > 0.3 ? '#ffaa00' : '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Ember sparks flying out
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 4;
+      const startY = pos.y - Math.random() * height * 0.7;
+
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * radius, y: startY },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#ff6600',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Ground fire ring
+    for (let i = 0; i < 10; i++) {
+      const ang = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y },
+        vel: { x: Math.cos(ang) * 1.5, y: -1 - Math.random() },
+        life: 10 + Math.random() * 8,
+        maxLife: 18,
+        color: '#ff4400',
+        size: 3 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(4, 12);
+  }
+
+  private createIceShatterEffect(pos: Vec2, radius: number, shardCount: number = 12) {
+    // Ice shards flying outward
+    for (let i = 0; i < shardCount; i++) {
+      const ang = (i / shardCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const spd = 4 + Math.random() * 4;
+
+      // Each shard is multiple particles in a line
+      for (let j = 0; j < 3; j++) {
+        const offset = j * 3;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * offset, y: pos.y + Math.sin(ang) * offset },
+          vel: {
+            x: Math.cos(ang) * spd * (1 - j * 0.2),
+            y: Math.sin(ang) * spd * (1 - j * 0.2) + j * 0.5 // Gravity effect
+          },
+          life: 20 + Math.random() * 10,
+          maxLife: 30,
+          color: j === 0 ? '#ffffff' : j === 1 ? '#aaeeff' : '#66ccff',
+          size: 3 - j * 0.5
+        });
+      }
+    }
+
+    // Central burst
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Frost mist spreading
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang) * 1, y: Math.sin(ang) * 1 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#88ddff',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Sparkle glints
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: 0, y: -0.5 + Math.random() * 0.3 },
+        life: 15 + Math.random() * 20,
+        maxLife: 35,
+        color: '#ffffff',
+        size: 1.5
+      });
+    }
+
+    // Ground frost ring
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang) * 0.5, y: Math.sin(ang) * 0.5 },
+        life: 30 + Math.random() * 15,
+        maxLife: 45,
+        color: '#aaddff',
+        size: 2 + Math.random()
+      });
+    }
+
+    this.triggerScreenShake(6, 10);
+  }
+
   private createMagicBeamEffect(startPos: Vec2, endPos: Vec2, beamColor: string, width: number = 8) {
     const dx = endPos.x - startPos.x;
     const dy = endPos.y - startPos.y;
