@@ -6830,6 +6830,264 @@ export class GameEngine {
     }
   }
 
+  private createRageModeActivation(pos: Vec2) {
+    // Fiery aura explosion
+    for (let i = 0; i < 40; i++) {
+      const ang = (i / 40) * Math.PI * 2;
+      const spd = 5 + Math.random() * 5;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: i % 3 === 0 ? '#ff0000' : (i % 2 === 0 ? '#ff6600' : '#ffaa00'),
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Rising rage flames
+    for (let i = 0; i < 25; i++) {
+      const offsetX = (Math.random() - 0.5) * 40;
+      this.particles.push({
+        pos: { x: pos.x + offsetX, y: pos.y + 10 },
+        vel: { x: (Math.random() - 0.5) * 2, y: -4 - Math.random() * 4 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: Math.random() > 0.3 ? '#ff4400' : '#ff0000',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Ground crack effect
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      for (let j = 0; j < 5; j++) {
+        const dist = 10 + j * 12;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * 1, y: Math.sin(ang) * 1 },
+          life: 30 - j * 4,
+          maxLife: 30,
+          color: '#880000',
+          size: 3 - j * 0.4
+        });
+      }
+    }
+
+    // Red energy vortex
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 50 + Math.random() * 30;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: -Math.cos(ang) * 4, y: -Math.sin(ang) * 4 },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: '#ff2200',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(10, 25);
+  }
+
+  private createMagicShieldBubble(pos: Vec2, radius: number, color: string) {
+    // Bubble surface particles
+    for (let i = 0; i < 30; i++) {
+      const ang = (i / 30) * Math.PI * 2;
+      const wobble = Math.sin(i * 0.5) * 3;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * (radius + wobble), y: pos.y + Math.sin(ang) * (radius + wobble) },
+        vel: { x: Math.cos(ang) * 0.3, y: Math.sin(ang) * 0.3 },
+        life: 15 + Math.random() * 5,
+        maxLife: 20,
+        color,
+        size: 2 + Math.random()
+      });
+    }
+
+    // Inner energy shimmer
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * radius * 0.7;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: (Math.random() - 0.5) * 1, y: (Math.random() - 0.5) * 1 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: '#ffffff',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Hexagonal pattern effect
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius * 0.8, y: pos.y + Math.sin(ang) * radius * 0.8 },
+        vel: { x: Math.cos(ang) * 0.5, y: Math.sin(ang) * 0.5 },
+        life: 18 + Math.random() * 4,
+        maxLife: 22,
+        color,
+        size: 3 + Math.random()
+      });
+    }
+  }
+
+  private createSummoningCircleEffect(pos: Vec2, radius: number, color: string) {
+    // Outer circle formation
+    for (let i = 0; i < 32; i++) {
+      const ang = (i / 32) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: Math.cos(ang + Math.PI / 2) * 1, y: Math.sin(ang + Math.PI / 2) * 1 },
+        life: 30 + Math.random() * 10,
+        maxLife: 40,
+        color,
+        size: 3 + Math.random()
+      });
+    }
+
+    // Inner circle
+    for (let i = 0; i < 20; i++) {
+      const ang = (i / 20) * Math.PI * 2;
+      const innerRadius = radius * 0.5;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * innerRadius, y: pos.y + Math.sin(ang) * innerRadius },
+        vel: { x: -Math.cos(ang + Math.PI / 2) * 0.8, y: -Math.sin(ang + Math.PI / 2) * 0.8 },
+        life: 25 + Math.random() * 10,
+        maxLife: 35,
+        color,
+        size: 2 + Math.random()
+      });
+    }
+
+    // Arcane symbols at cardinal points
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2;
+      const symbolPos = { x: pos.x + Math.cos(ang) * radius * 0.75, y: pos.y + Math.sin(ang) * radius * 0.75 };
+      for (let j = 0; j < 5; j++) {
+        const sparkAng = Math.random() * Math.PI * 2;
+        const spd = 1 + Math.random();
+        this.particles.push({
+          pos: { ...symbolPos },
+          vel: { x: Math.cos(sparkAng) * spd, y: Math.sin(sparkAng) * spd - 1 },
+          life: 20 + Math.random() * 10,
+          maxLife: 30,
+          color: '#ffffff',
+          size: 2 + Math.random()
+        });
+      }
+    }
+
+    // Rising energy pillar
+    for (let i = 0; i < 15; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 20, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 1, y: -3 - Math.random() * 3 },
+        life: 35 + Math.random() * 20,
+        maxLife: 55,
+        color,
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Convergent particles
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = radius + Math.random() * 30;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: -Math.cos(ang) * 2.5, y: -Math.sin(ang) * 2.5 },
+        life: 18 + Math.random() * 12,
+        maxLife: 30,
+        color: '#ccccff',
+        size: 2 + Math.random() * 2
+      });
+    }
+  }
+
+  private createBossDeathExplosion(pos: Vec2, radius: number) {
+    // Massive multi-stage explosion
+    for (let stage = 0; stage < 4; stage++) {
+      const delay = stage * 3;
+      const stageRadius = radius * (0.5 + stage * 0.2);
+
+      for (let i = 0; i < 40; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 4 + Math.random() * 8 + stage * 2;
+        this.particles.push({
+          pos: { x: pos.x + (Math.random() - 0.5) * 30, y: pos.y + (Math.random() - 0.5) * 30 },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 2 },
+          life: 30 + delay + Math.random() * 20,
+          maxLife: 50 + delay,
+          color: stage < 2 ? (i % 2 === 0 ? '#ffffff' : '#ffff00') : (i % 2 === 0 ? '#ff6600' : '#ff0000'),
+          size: 5 + Math.random() * 4 - stage * 0.5
+        });
+      }
+    }
+
+    // Body disintegration particles
+    for (let i = 0; i < 80; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * radius;
+      const spd = 2 + Math.random() * 5;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * dist, y: pos.y + Math.sin(ang) * dist },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd - 1 },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: Math.random() > 0.5 ? '#880000' : '#440000',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Soul essence escaping
+    for (let i = 0; i < 30; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * radius, y: pos.y + (Math.random() - 0.5) * radius },
+        vel: { x: (Math.random() - 0.5) * 3, y: -4 - Math.random() * 4 },
+        life: 50 + Math.random() * 40,
+        maxLife: 90,
+        color: Math.random() > 0.5 ? '#aa00ff' : '#ff00ff',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Expanding shockwave rings
+    for (let ring = 0; ring < 5; ring++) {
+      for (let i = 0; i < 32; i++) {
+        const ang = (i / 32) * Math.PI * 2;
+        const spd = 6 + ring * 3;
+        this.particles.push({
+          pos: { ...pos },
+          vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+          life: 15 + ring * 6,
+          maxLife: 30 + ring * 6,
+          color: ring < 2 ? '#ffffff' : (ring < 4 ? '#ffaa00' : '#ff4400'),
+          size: 4 - ring * 0.5
+        });
+      }
+    }
+
+    // Ground impact debris
+    for (let i = 0; i < 40; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 5;
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 50, y: pos.y + 20 },
+        vel: { x: Math.cos(ang) * spd, y: -4 - Math.random() * 6 },
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        color: '#8b7355',
+        size: 3 + Math.random() * 3
+      });
+    }
+
+    // Intense screen shake
+    this.triggerScreenShake(20, 50);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
