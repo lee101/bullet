@@ -170,8 +170,9 @@ class AssetManager {
 
       if (!this.criticalLoaded) {
         await this._loadPhase(CRITICAL_ASSETS, 'critical');
-        await this._loadMagicAssets();
         this.criticalLoaded = true;
+        // Load magic assets in background - don't block startup
+        this._loadMagicAssets().catch(() => {});
       }
 
       await this._loadPhase(GAMEPLAY_ASSETS, 'gameplay');
@@ -295,19 +296,17 @@ class AssetManager {
     return img;
   }
 
-  private _loadImage(src: string): Promise<HTMLImageElement> {
+  private _loadImage(src: string, timeoutMs = 1500): Promise<HTMLImageElement> {
     return new Promise((resolve) => {
       const img = new Image();
       img.decoding = 'async';
-      img.onload = () => {
-        this.loadedCount++;
-        resolve(img);
-      };
-      img.onerror = () => {
-        console.warn(`[AssetManager] Failed to load: ${src}`);
-        this.loadedCount++;
-        resolve(img); // Resolve with empty image on error
-      };
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; this.loadedCount++; resolve(img); } };
+      const timer = setTimeout(() => {
+        if (!settled) { console.warn(`[AssetManager] Timeout: ${src}`); done(); }
+      }, timeoutMs);
+      img.onload = () => { clearTimeout(timer); done(); };
+      img.onerror = () => { clearTimeout(timer); done(); };
       img.src = src;
     });
   }
