@@ -296,7 +296,7 @@ class AssetManager {
     return img;
   }
 
-  private _loadImage(src: string, timeoutMs = 1500): Promise<HTMLImageElement> {
+  private _loadImage(src: string, timeoutMs = 5000): Promise<HTMLImageElement> {
     return new Promise((resolve) => {
       const img = new Image();
       img.decoding = 'async';
