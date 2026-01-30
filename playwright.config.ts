@@ -2,11 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  fullyParallel: true,
+  fullyParallel: false, // Run serially to avoid overwhelming dev server
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1, // Single worker for consistent asset loading
   reporter: 'list',
+  timeout: 60000, // 60s per test
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
