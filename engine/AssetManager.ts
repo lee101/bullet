@@ -314,7 +314,7 @@ class AssetManager {
 
   private async _loadPhase(manifest: Record<string, string[]>, phase: LoadProgress['phase']): Promise<void> {
     const phaseStart = assetPerf.start(`assets:${phase}`);
-    const batchSize = 10; // Load 10 assets at a time for better parallelism
+    const batchSize = 20; // Load 20 assets at a time for faster loading
     const tasks: { category: string; name: string; src: string; fallbackSrc?: string | null }[] = [];
     const paths = this.getAssetPaths();
 

@@ -353,18 +353,18 @@ export class GameEngine {
 
   // Pre-warm the engine while in menu for faster game start
   public async preWarm() {
-    // Pre-load core assets; defer heavy terrain generation
-    await assetManager.loadCore();
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => terrainRenderer.load(), { timeout: 500 });
-    } else {
-      setTimeout(() => terrainRenderer.load(), 0);
-    }
+    const start = performance.now();
+    // Load assets and terrain in parallel for faster start
+    await Promise.all([
+      assetManager.loadCore(),
+      terrainRenderer.load()
+    ]);
+    console.log(`Assets+terrain: ${(performance.now() - start).toFixed(0)}ms`);
     // Pre-compute spawnable positions to warm caches
-    this.world.prefillSpawnablePositions(60);
+    this.world.prefillSpawnablePositions(30);
     // Pre-build shadow world for instant first start
     this.prepareNextWorld();
-    console.log('Engine pre-warmed');
+    console.log(`Engine pre-warmed: ${(performance.now() - start).toFixed(0)}ms total`);
   }
 
   public start(playerCount: number = 1) {

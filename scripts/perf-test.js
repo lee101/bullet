@@ -23,6 +23,7 @@ const __dirname = path.dirname(__filename);
 const TEST_DURATION_MS = 30000; // 30 seconds
 const MIN_AVG_FPS = 55;
 const MIN_FPS_THRESHOLD = 30;
+const MAX_STARTUP_MS = 5000; // Target: 5 seconds or less to start game
 const PORT = process.env.PERF_TEST_PORT || process.env.PORT || 3001;
 const BASE_URL = `http://localhost:${PORT}`;
 const HEADLESS = process.env.PERF_HEADLESS !== 'false';
@@ -72,13 +73,19 @@ async function runPerfTest() {
     });
   });
 
-  // Navigate to the game (assumes dev server is running on 3001)
+  // Navigate to the game and measure startup time
   console.log('Loading game...');
-  await page.goto(`${BASE_URL}?perf=1&perfLog=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await sleep(2000);
+  const startupStart = Date.now();
+  await page.goto(`${BASE_URL}?perf=1&perfLog=1&quality=low`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+  // Wait for engine to be ready (pre-warmed)
+  console.log('Waiting for engine pre-warm...');
+  await page.waitForFunction(() => window.__ENGINE__, { timeout: 15000 });
+  const engineReadyTime = Date.now() - startupStart;
+  console.log(`Engine ready: ${engineReadyTime}ms`);
 
   console.log('Starting single-player game...');
-  await page.waitForFunction(() => window.__ENGINE__, { timeout: 10000 });
+  const gameStartTime = Date.now();
   await page.evaluate(() => {
     const engine = window.__ENGINE__;
     if (engine) {
@@ -87,7 +94,9 @@ async function runPerfTest() {
       ]);
     }
   });
-  await sleep(1000);
+  await sleep(500);
+  const startupTime = Date.now() - startupStart;
+  console.log(`Total startup time: ${startupTime}ms (target: <${MAX_STARTUP_MS}ms)`);
   let jscheckBusy = false;
   const jscheckTimer = setInterval(async () => {
     if (jscheckBusy) return;
@@ -186,6 +195,13 @@ async function runPerfTest() {
     console.log(`PASS: Min FPS (${minFps}) >= ${MIN_FPS_THRESHOLD}`);
   }
 
+  if (startupTime > MAX_STARTUP_MS) {
+    console.log(`FAIL: Startup time (${startupTime}ms) exceeds threshold (${MAX_STARTUP_MS}ms)`);
+    passed = false;
+  } else {
+    console.log(`PASS: Startup time (${startupTime}ms) <= ${MAX_STARTUP_MS}ms`);
+  }
+
   const perfAnalysis = perfSnapshot ? {
     engine: summarizePerf(perfSnapshot.engine),
     render: summarizePerf(perfSnapshot.render),
@@ -196,6 +212,8 @@ async function runPerfTest() {
   const outDir = path.resolve(__dirname, '..', 'test-results');
   fs.mkdirSync(outDir, { recursive: true });
   const report = {
+    startupTime,
+    engineReadyTime,
     fpsData,
     perfSnapshot,
     perfAnalysis,

@@ -119,21 +119,10 @@ export class TerrainRenderer {
 
   private async _generateTextures(): Promise<void> {
     const start = assetPerf.start('terrain:generate');
-    // Pre-generate procedural textures for all biomes
-    // Generate in two batches to allow UI updates between
-    const criticalBiomes: Biome[] = ['GRASS', 'FOREST', 'MOUNTAIN', 'SEA', 'RIVER'];
-    const secondaryBiomes: Biome[] = ['SNOW', 'SHORE', 'SWAMP', 'LOWLAND', 'TOWN'];
-
-    // Generate critical biomes first (smaller size for faster initial load)
-    await Promise.all(criticalBiomes.map(biome => this.generateBiome(biome, 128)));
-
-    // Yield to allow other tasks
-    await this.yieldToMain();
-
-    // Generate secondary biomes
-    await Promise.all(secondaryBiomes.map(biome => this.generateBiome(biome, 128)));
-
-    console.log('TerrainRenderer: procedural textures generated');
+    // Generate all biome textures in parallel at smaller size for fast start
+    const allBiomes: Biome[] = ['GRASS', 'FOREST', 'MOUNTAIN', 'SEA', 'RIVER', 'SNOW', 'SHORE', 'SWAMP', 'LOWLAND', 'TOWN'];
+    await Promise.all(allBiomes.map(biome => this.generateBiome(biome, 64)));
+    console.log(`TerrainRenderer: ${allBiomes.length} textures in ${(performance.now() - (start || 0)).toFixed(0)}ms`);
     assetPerf.end('terrain:generate', start, { force: true });
   }
 
