@@ -10543,6 +10543,346 @@ export class GameEngine {
     }
   }
 
+  private createComboFinisherEffect(pos: Vec2, comboLevel: number, color: string = '#ffaa00') {
+    const intensity = Math.min(comboLevel / 10, 3);
+
+    // Explosive burst scaled by combo
+    const burstCount = 15 + Math.floor(intensity * 10);
+    for (let i = 0; i < burstCount; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 4 * intensity;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: Math.random() > 0.3 ? color : '#ffffff',
+        size: 3 + Math.random() * 2 * intensity
+      });
+    }
+
+    // Radial star pattern
+    const starPoints = 6 + Math.floor(intensity * 2);
+    for (let i = 0; i < starPoints; i++) {
+      const ang = (i / starPoints) * Math.PI * 2;
+      const length = 30 + intensity * 20;
+
+      for (let j = 0; j < 5; j++) {
+        const t = j / 5;
+        this.particles.push({
+          pos: { x: pos.x + Math.cos(ang) * length * t, y: pos.y + Math.sin(ang) * length * t },
+          vel: { x: Math.cos(ang) * 4, y: Math.sin(ang) * 4 },
+          life: 10 + j * 2,
+          maxLife: 10 + j * 2,
+          color: j < 2 ? '#ffffff' : color,
+          size: 3 - t
+        });
+      }
+    }
+
+    // Ascending number particles (visual emphasis)
+    for (let i = 0; i < 8; i++) {
+      const x = pos.x + (Math.random() - 0.5) * 30;
+      this.particles.push({
+        pos: { x, y: pos.y },
+        vel: { x: (Math.random() - 0.5) * 1, y: -3 - Math.random() * 2 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffdd44',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Ground shockwave
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const spd = 3 + intensity;
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd * 0.3 },
+        life: 12,
+        maxLife: 12,
+        color: color,
+        size: 2.5
+      });
+    }
+
+    this.triggerScreenShake(5 + intensity * 3, 10 + intensity * 5);
+  }
+
+  private createShieldReflectEffect(pos: Vec2, incomingAngle: number, shieldColor: string = '#4488ff') {
+    // Reflection burst in opposite direction
+    const reflectAngle = incomingAngle + Math.PI;
+
+    for (let i = 0; i < 12; i++) {
+      const spread = (Math.random() - 0.5) * Math.PI * 0.5;
+      const ang = reflectAngle + spread;
+      const spd = 3 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: Math.random() > 0.5 ? '#ffffff' : shieldColor,
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Shield flash ring
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * 15, y: pos.y + Math.sin(ang) * 15 },
+        vel: { x: Math.cos(ang) * 2, y: Math.sin(ang) * 2 },
+        life: 8 + Math.random() * 4,
+        maxLife: 12,
+        color: shieldColor,
+        size: 2.5
+      });
+    }
+
+    // Impact sparks at contact point
+    for (let i = 0; i < 8; i++) {
+      const ang = incomingAngle + (Math.random() - 0.5) * Math.PI * 0.3;
+      const spd = 2 + Math.random() * 2;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 6 + Math.random() * 4,
+        maxLife: 10,
+        color: '#ffdd88',
+        size: 1.5 + Math.random()
+      });
+    }
+
+    // Central bright flash
+    for (let i = 0; i < 5; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 8, y: pos.y + (Math.random() - 0.5) * 8 },
+        vel: { x: 0, y: 0 },
+        life: 5 + Math.random() * 3,
+        maxLife: 8,
+        color: '#ffffff',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    this.triggerScreenShake(3, 6);
+  }
+
+  private createPoisonNovaEffect(pos: Vec2, radius: number) {
+    // Expanding poison wave
+    const waveParticles = 24;
+    for (let i = 0; i < waveParticles; i++) {
+      const ang = (i / waveParticles) * Math.PI * 2;
+      const spd = 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 25,
+        maxLife: 25,
+        color: '#44cc22',
+        size: 3
+      });
+    }
+
+    // Secondary toxic ring
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2 + Math.PI / 16;
+      const spd = 2.5;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 30,
+        maxLife: 30,
+        color: '#88ff44',
+        size: 2.5
+      });
+    }
+
+    // Toxic cloud at origin
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.3;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 1, y: -0.5 - Math.random() * 0.5 },
+        life: 35 + Math.random() * 20,
+        maxLife: 55,
+        color: '#338822',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Poison droplets scattering
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd + 1 }, // Gravity
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        color: '#66dd33',
+        size: 2 + Math.random()
+      });
+    }
+
+    // Bubbling effect
+    for (let i = 0; i < 8; i++) {
+      const x = pos.x + (Math.random() - 0.5) * 30;
+      this.particles.push({
+        pos: { x, y: pos.y + 10 },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -1.5 - Math.random() },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#aaff66',
+        size: 2
+      });
+    }
+
+    this.triggerScreenShake(4, 8);
+  }
+
+  private createArcanePortalEffect(pos: Vec2, radius: number, isOpening: boolean) {
+    // Swirling portal particles
+    const swirlCount = 20;
+    for (let i = 0; i < swirlCount; i++) {
+      const ang = (i / swirlCount) * Math.PI * 2;
+      const r = isOpening ? 0 : radius;
+      const targetR = isOpening ? radius : 0;
+      const spd = (targetR - r) / 15;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: {
+          x: Math.cos(ang) * spd + Math.cos(ang + Math.PI / 2) * 2,
+          y: Math.sin(ang) * spd + Math.sin(ang + Math.PI / 2) * 2
+        },
+        life: 20,
+        maxLife: 20,
+        color: i % 3 === 0 ? '#ffffff' : i % 3 === 1 ? '#aa66ff' : '#6633cc',
+        size: 2.5
+      });
+    }
+
+    // Inner mystical glow
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.5;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 1, y: (Math.random() - 0.5) * 1 },
+        life: 15 + Math.random() * 10,
+        maxLife: 25,
+        color: '#8844cc',
+        size: 3 + Math.random() * 2
+      });
+    }
+
+    // Edge rune sparkles
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * radius, y: pos.y + Math.sin(ang) * radius },
+        vel: { x: 0, y: isOpening ? -0.5 : 0.5 },
+        life: 25 + Math.random() * 10,
+        maxLife: 35,
+        color: '#ffffff',
+        size: 2
+      });
+    }
+
+    // Central void/light
+    const centerColor = isOpening ? '#110022' : '#ffffff';
+    for (let i = 0; i < 6; i++) {
+      this.particles.push({
+        pos: { x: pos.x + (Math.random() - 0.5) * 10, y: pos.y + (Math.random() - 0.5) * 10 },
+        vel: { x: 0, y: 0 },
+        life: 12 + Math.random() * 8,
+        maxLife: 20,
+        color: centerColor,
+        size: 4 + Math.random() * 2
+      });
+    }
+
+    if (isOpening) {
+      this.triggerScreenShake(3, 8);
+    }
+  }
+
+  private createFrostNovaEffect(pos: Vec2, radius: number) {
+    // Expanding ice ring
+    for (let i = 0; i < 24; i++) {
+      const ang = (i / 24) * Math.PI * 2;
+      const spd = 4;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 18,
+        maxLife: 18,
+        color: '#88ddff',
+        size: 3
+      });
+    }
+
+    // Ice crystal shards flying out
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 2 + Math.random() * 3;
+
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        color: Math.random() > 0.5 ? '#ffffff' : '#aaeeff',
+        size: 2 + Math.random() * 2
+      });
+    }
+
+    // Frost mist
+    for (let i = 0; i < 15; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.4;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: Math.cos(ang) * 1.5, y: Math.sin(ang) * 1.5 },
+        life: 30 + Math.random() * 20,
+        maxLife: 50,
+        color: '#aaccff',
+        size: 4 + Math.random() * 3
+      });
+    }
+
+    // Snowflake sparkles
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.8;
+
+      this.particles.push({
+        pos: { x: pos.x + Math.cos(ang) * r, y: pos.y + Math.sin(ang) * r },
+        vel: { x: (Math.random() - 0.5) * 0.5, y: 0.3 + Math.random() * 0.3 },
+        life: 25 + Math.random() * 15,
+        maxLife: 40,
+        color: '#ffffff',
+        size: 1.5
+      });
+    }
+
+    this.triggerScreenShake(5, 10);
+  }
+
   private announce(text: string, color: string, priority: number) {
     this.announcements.push({ text, life: 180, color, priority });
   }
